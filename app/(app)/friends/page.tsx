@@ -15,6 +15,7 @@ import type { Profile, Friend, FriendRequest } from '@/lib/types';
 
 export default function FriendsPage() {
   const { user } = useAuth();
+  console.log('Current user id:', user?.id);
   const [friends, setFriends] = useState<(Friend & { profile: Profile })[]>([]);
   const [requests, setRequests] = useState<(FriendRequest & { sender: Profile })[]>([]);
   const [search, setSearch] = useState('');
