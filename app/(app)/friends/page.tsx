@@ -26,9 +26,19 @@ export default function FriendsPage() {
     if (!user) return;
     setLoading(true);
     const [fRes, rRes] = await Promise.all([
-      supabase.from('friends').select('*, friend:profiles!friends_friend_id_fkey(*)').eq('user_id', user.id),
-      supabase.from('friend_requests').select('*, sender:profiles!friend_requests_sender_id_fkey(*)').eq('receiver_id', user.id).eq('status', 'pending'),
+      supabase.from('friends')
+    .select('*, friend:profiles!friends_friend_id_fkey(*)')
+    .eq('user_id', user.id),
+
+  supabase.from('friend_requests')
+    .select('*, sender:profiles!friend_requests_sender_id_fkey(*)')
+    .eq('receiver_id', user.id)
+    .eq('status', 'pending'),
     ]);
+    console.log('Friend Requests Response:', rRes);
+    console.log('Friend Requests Data:', rRes.data);
+    console.log('Friend Requests Error:', rRes.error);
+    
     setFriends((fRes.data as any) ?? []);
     setRequests((rRes.data as any) ?? []);
     setLoading(false);
