@@ -91,13 +91,13 @@ export default function PenPalPage() {
                     )}
                   >
                     <Avatar className="h-9 w-9">
-                      {f.profile?.avatar_url ? <img src={f.profile.avatar_url} alt="" className="h-full w-full object-cover" /> : null}
+                      {f.friend?.avatar_url ? <img src={f.friend.avatar_url} alt="" className="h-full w-full object-cover" /> : null}
                       <AvatarFallback className="bg-brand-100 text-xs text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
-                        {(f.profile?.username ?? '?').charAt(0).toUpperCase()}
+                        {(f.friend?.username ?? '?').charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{f.profile?.username ?? 'User'}</p>
+                      <p className="truncate text-sm font-medium">{f.friend?.username ?? 'User'}</p>
                       <p className="truncate text-xs text-muted-foreground">Tap to open</p>
                     </div>
                   </button>
