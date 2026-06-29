@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useI18n } from '@/components/providers/i18n-provider';
@@ -169,14 +170,18 @@ export default function FeedPage() {
           <Card key={j.id} className="overflow-hidden">
             <CardContent className="p-5">
               <div className="mb-3 flex items-center gap-3">
-                <Avatar className="h-10 w-10">
-                  {j.profiles?.avatar_url ? <img src={j.profiles.avatar_url} alt="" className="h-full w-full object-cover" /> : null}
-                  <AvatarFallback className="bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
-                    {(j.profiles?.username ?? '?').charAt(0).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
+                <Link href={`/profile/${j.profiles?.username ?? ''}`}>
+                  <Avatar className="h-10 w-10 cursor-pointer">
+                    {j.profiles?.avatar_url ? <img src={j.profiles.avatar_url} alt="" className="h-full w-full object-cover" /> : null}
+                    <AvatarFallback className="bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
+                      {(j.profiles?.username ?? '?').charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                </Link>
                 <div className="flex-1">
-                  <p className="text-sm font-medium">{j.profiles?.username ?? 'Anonymous'}</p>
+                  <Link href={`/profile/${j.profiles?.username ?? ''}`}>
+                    <p className="text-sm font-medium hover:underline">{j.profiles?.username ?? 'Anonymous'}</p>
+                  </Link>
                   <p className="text-xs text-muted-foreground">
                     {new Date(j.journal_date).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
                   </p>
@@ -184,12 +189,14 @@ export default function FeedPage() {
                 {j.tags?.slice(0, 3).map((tag) => <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>)}
               </div>
 
-              <div className="space-y-2 text-sm">
-                {j.what_happened && <p><span className="font-medium">What happened:</span> <span className="text-muted-foreground">{j.what_happened}</span></p>}
-                {j.grateful_for && <p><span className="font-medium">Grateful for:</span> <span className="text-muted-foreground">{j.grateful_for}</span></p>}
-                {j.free_notes && <p className="whitespace-pre-wrap text-muted-foreground">{j.free_notes}</p>}
-                {j.motivation_quote && <p className="border-l-2 border-gold-400 pl-3 font-display italic text-foreground/80">&ldquo;{j.motivation_quote}&rdquo;</p>}
-              </div>
+              <Link href={`/journal/${j.id}`}>
+                <div className="space-y-2 text-sm cursor-pointer">
+                  {j.what_happened && <p><span className="font-medium">What happened:</span> <span className="text-muted-foreground">{j.what_happened}</span></p>}
+                  {j.grateful_for && <p><span className="font-medium">Grateful for:</span> <span className="text-muted-foreground">{j.grateful_for}</span></p>}
+                  {j.free_notes && <p className="line-clamp-4 whitespace-pre-wrap text-muted-foreground">{j.free_notes}</p>}
+                  {j.motivation_quote && <p className="border-l-2 border-gold-400 pl-3 font-display italic text-foreground/80">&ldquo;{j.motivation_quote}&rdquo;</p>}
+                </div>
+              </Link>
 
               <div className="mt-4 flex items-center gap-1 border-t border-border pt-3">
                 <Button variant="ghost" size="sm" onClick={() => toggleLike(j)} className={cn('gap-1.5', likes.has(j.id) && 'text-destructive')}>

@@ -15,6 +15,7 @@ import {
   Settings,
   X,
   Sparkles,
+  Compass,
 } from 'lucide-react';
 
 const navItems = [
@@ -23,6 +24,7 @@ const navItems = [
   { href: '/activities', label: 'Activities', icon: CalendarRange },
   { href: '/history', label: 'History', icon: BookHeart },
   { href: '/stats', label: 'Statistics', icon: BarChart3 },
+  { href: '/discover', label: 'Discover', icon: Compass },
   { href: '/friends', label: 'Friends', icon: Users },
   { href: '/pen-pal', label: 'Pen Pal', icon: PenTool },
   { href: '/feed', label: 'Public Feed', icon: Sparkles },

@@ -155,18 +155,20 @@ console.log('Friends Error:', fRes.error);
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
               {friends.map((f) => (
-                <Card key={f.id}>
+                <Card key={f.id} className="cursor-pointer transition-shadow hover:shadow-md">
                   <CardContent className="flex items-center gap-3 p-4">
-                    <Avatar className="h-11 w-11">
-                      {f.friend?.avatar_url ? <img src={f.friend.avatar_url} alt="" className="h-full w-full object-cover" /> : null}
-                      <AvatarFallback className="bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
-                        {(f.friend?.username ?? '?').charAt(0).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium">{f.friend?.username ?? 'User'}</p>
-                      {f.friend?.bio && <p className="truncate text-xs text-muted-foreground">{f.friend.bio}</p>}
-                    </div>
+                    <Link href={`/profile/${f.friend?.username ?? ''}`} className="flex items-center gap-3 min-w-0 flex-1">
+                      <Avatar className="h-11 w-11">
+                        {f.friend?.avatar_url ? <img src={f.friend.avatar_url} alt="" className="h-full w-full object-cover" /> : null}
+                        <AvatarFallback className="bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
+                          {(f.friend?.username ?? '?').charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium hover:underline">{f.friend?.username ?? 'User'}</p>
+                        {f.friend?.bio && <p className="truncate text-xs text-muted-foreground">{f.friend.bio}</p>}
+                      </div>
+                    </Link>
                     <div className="flex gap-1">
                       <Button asChild variant="ghost" size="icon" className="h-8 w-8"><Link href={`/pen-pal?to=${f.friend_id}`}><PenTool className="h-4 w-4" /></Link></Button>
                       <Button variant="ghost" size="icon" onClick={() => removeFriend(f)} className="h-8 w-8 text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>
@@ -220,18 +222,20 @@ console.log('Friends Error:', fRes.error);
           ) : (
             <div className="space-y-2">
               {results.map((p) => (
-                <Card key={p.id}>
+                <Card key={p.id} className="cursor-pointer transition-shadow hover:shadow-md">
                   <CardContent className="flex items-center gap-3 p-4">
-                    <Avatar className="h-11 w-11">
-                      {p.avatar_url ? <img src={p.avatar_url} alt="" className="h-full w-full object-cover" /> : null}
-                      <AvatarFallback className="bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
-                        {(p.username ?? '?').charAt(0).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium">{p.username ?? 'User'}</p>
-                      {p.bio && <p className="truncate text-xs text-muted-foreground">{p.bio}</p>}
-                    </div>
+                    <Link href={`/profile/${p.username ?? ''}`} className="flex items-center gap-3 min-w-0 flex-1">
+                      <Avatar className="h-11 w-11">
+                        {p.avatar_url ? <img src={p.avatar_url} alt="" className="h-full w-full object-cover" /> : null}
+                        <AvatarFallback className="bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
+                          {(p.username ?? '?').charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium hover:underline">{p.username ?? 'User'}</p>
+                        {p.bio && <p className="truncate text-xs text-muted-foreground">{p.bio}</p>}
+                      </div>
+                    </Link>
                     <Button size="sm" onClick={() => sendRequest(p.id)} className="gap-1.5 h-8"><UserPlus className="h-4 w-4" /> Add</Button>
                   </CardContent>
                 </Card>
