@@ -158,14 +158,14 @@ console.log('Friends Error:', fRes.error);
                 <Card key={f.id}>
                   <CardContent className="flex items-center gap-3 p-4">
                     <Avatar className="h-11 w-11">
-                      {f.friend?.avatar_url ? <img src={f.friend.avatar_url} alt="" className="h-full w-full object-cover" /> : null}
+                      {f.profile?.avatar_url ? <img src={f.profile.avatar_url} alt="" className="h-full w-full object-cover" /> : null}
                       <AvatarFallback className="bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
-                        {(f.friend?.username ?? '?').charAt(0).toUpperCase()}
+                        {(f.profile?.username ?? '?').charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium">{f.friend?.username ?? 'User'}</p>
-                      {f.friend?.bio && <p className="truncate text-xs text-muted-foreground">{f.friend.bio}</p>}
+                      <p className="truncate font-medium">{f.profile?.username ?? 'User'}</p>
+                      {f.profile?.bio && <p className="truncate text-xs text-muted-foreground">{f.profile.bio}</p>}
                     </div>
                     <div className="flex gap-1">
                       <Button asChild variant="ghost" size="icon" className="h-8 w-8"><Link href={`/pen-pal?to=${f.friend_id}`}><PenTool className="h-4 w-4" /></Link></Button>
