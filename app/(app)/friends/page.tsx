@@ -70,18 +70,42 @@ export default function FriendsPage() {
   };
 
   const acceptRequest = async (req: FriendRequest) => {
-    try {
-      await supabase.from('friend_requests').update({ status: 'accepted' }).eq('id', req.id);
-      await supabase.from('friends').insert([
-        { user_id: req.sender_id, friend_id: req.receiver_id },
-        { user_id: req.receiver_id, friend_id: req.sender_id },
-      ]);
-      toast.success('Friend added');
-      load();
-    } catch {
-      toast.error('Failed to accept request');
-    }
-  };
+  try {
+    const { error: requestError } = await supabase
+      .from('friend_requests')
+      .update({ status: 'accepted' })
+      .eq('id', req.id);
+
+    if (requestError) throw requestError;
+
+    const { data, error: friendError } = await supabase
+      .from('friends')
+      .insert([
+        {
+          user_id: req.sender_id,
+          friend_id: req.receiver_id,
+        },
+        {
+          user_id: req.receiver_id,
+          friend_id: req.sender_id,
+        },
+      ])
+      .select();
+
+    console.log('Inserted friends:', data);
+    console.log('Friend insert error:', friendError);
+
+    if (friendError) throw friendError;
+
+    toast.success('Friend added');
+    load();
+  } catch (err) {
+    console.error(err);
+    toast.error(
+      err instanceof Error ? err.message : 'Failed to accept request'
+    );
+  }
+};
 
   const rejectRequest = async (id: string) => {
     await supabase.from('friend_requests').update({ status: 'rejected' }).eq('id', id);
