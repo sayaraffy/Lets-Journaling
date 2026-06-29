@@ -114,13 +114,13 @@ export default function PenPalPage() {
               <>
                 <div className="flex items-center gap-3 border-b border-border p-3">
                   <Avatar className="h-9 w-9">
-                    {selectedFriend.profile?.avatar_url ? <img src={selectedFriend.profile.avatar_url} alt="" className="h-full w-full object-cover" /> : null}
+                    {selectedFriend.friend?.avatar_url ? <img src={selectedFriend.friend.avatar_url} alt="" className="h-full w-full object-cover" /> : null}
                     <AvatarFallback className="bg-brand-100 text-xs text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
-                      {(selectedFriend.profile?.username ?? '?').charAt(0).toUpperCase()}
+                      {(selectedFriend.friend?.username ?? '?').charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <div>
-                    <p className="font-medium">{selectedFriend.profile?.username ?? 'User'}</p>
+                    <p className="font-medium">{selectedFriend.friend?.username ?? 'User'}</p>
                     <p className="text-xs text-muted-foreground">Letter exchange</p>
                   </div>
                 </div>
@@ -129,7 +129,7 @@ export default function PenPalPage() {
                   {messages.length === 0 ? (
                     <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-muted-foreground">
                       <PenTool className="h-8 w-8" />
-                      <p className="text-sm">Write your first letter to {selectedFriend.profile?.username}.</p>
+                      <p className="text-sm">Write your first letter to {selectedFriend.friend?.username}.</p>
                     </div>
                   ) : (
                     messages.map((m) => {
