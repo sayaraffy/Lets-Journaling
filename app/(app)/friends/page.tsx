@@ -164,7 +164,7 @@ console.log('Friends Error:', fRes.error);
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium">{f.profile?.username ?? 'User'}</p>
+                      <p className="truncate font-medium">{f.friend?.username ?? 'User'}</p>
                       {f.friend?.bio && <p className="truncate text-xs text-muted-foreground">{f.friend.bio}</p>}
                     </div>
                     <div className="flex gap-1">
