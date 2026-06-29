@@ -112,6 +112,19 @@ export default function UserProfilePage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Realtime: refetch when this user's journals, likes, or comments change
+  useEffect(() => {
+    if (!profile) return;
+    const channel = supabase
+      .channel(`user-profile-${profile.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'journals', filter: `user_id=eq.${profile.id}` }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'journal_likes' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'journal_comments' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'friends', filter: `user_id=eq.${profile.id}` }, () => load())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [profile, load]);
+
   const sendRequest = async () => {
     if (!user || !profile) return;
     setActionLoading(true);
@@ -186,7 +199,9 @@ export default function UserProfilePage() {
   return (
     <div className="space-y-6 animate-fade-in">
       <Card className="overflow-hidden">
-        <div className="h-28 bg-gradient-to-r from-brand-400 to-brand-600 dark:from-brand-700 dark:to-brand-900" />
+        <div className="h-28 bg-gradient-to-r from-brand-400 to-brand-600 dark:from-brand-700 dark:to-brand-900">
+          {profile.cover_url && <img src={profile.cover_url} alt="" className="h-full w-full object-cover" />}
+        </div>
         <CardContent className="p-6">
           <div className="-mt-16 flex flex-col gap-4 sm:flex-row sm:items-end">
             <Avatar className="h-24 w-24 border-4 border-card shadow-soft">

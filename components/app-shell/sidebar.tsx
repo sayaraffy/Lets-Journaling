@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { Logo } from '@/components/brand/logo';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/components/providers/auth-provider';
+import { useUnreadMessages } from '@/lib/hooks/use-unread-messages';
 import {
   CalendarDays,
   BookHeart,
@@ -40,6 +41,7 @@ export function Sidebar({
   pathname: string;
 }) {
   const { profile, signOut } = useAuth();
+  const unreadCount = useUnreadMessages();
 
   return (
     <>
@@ -67,6 +69,7 @@ export function Sidebar({
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4 scrollbar-thin">
           {navItems.map((item) => {
             const active = pathname === item.href || pathname.startsWith(item.href + '/');
+            const showBadge = item.href === '/pen-pal' && unreadCount > 0;
             return (
               <Link
                 key={item.href}
@@ -80,7 +83,12 @@ export function Sidebar({
                 )}
               >
                 <item.icon className="h-4 w-4 shrink-0" />
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {showBadge && (
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-xs font-medium text-destructive-foreground">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
               </Link>
             );
           })}

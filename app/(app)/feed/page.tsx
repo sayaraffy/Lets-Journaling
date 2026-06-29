@@ -62,6 +62,17 @@ export default function FeedPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Realtime: refetch feed when journals, likes, or comments change
+  useEffect(() => {
+    const channel = supabase
+      .channel('public-feed')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'journals' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'journal_likes' }, () => load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'journal_comments' }, () => load())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [load]);
+
   const toggleLike = async (j: Journal) => {
     if (!user) return;
     const liked = likes.has(j.id);

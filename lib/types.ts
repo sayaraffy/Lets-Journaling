@@ -4,11 +4,13 @@ export type Profile = {
   full_name: string | null;
   bio: string | null;
   avatar_url: string | null;
+  cover_url: string | null;
   streak: number;
   longest_streak: number;
   last_journal_date: string | null;
   join_date: string;
   updated_at: string;
+  settings: Record<string, unknown> | null;
 };
 
 export type JournalVisibility = 'private' | 'friends' | 'public';
@@ -116,6 +118,7 @@ export type PenPalMessage = {
   image_path: string | null;
   shared_journal_id: string | null;
   read_at: string | null;
+  delivered_at: string | null;
   created_at: string;
 };
 
