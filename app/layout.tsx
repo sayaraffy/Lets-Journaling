@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { Inter, Poppins } from 'next/font/google';
 import { ThemeProvider } from '@/components/providers/theme-provider';
 import { AuthProvider } from '@/components/providers/auth-provider';
+import { I18nProvider } from '@/components/providers/i18n-provider';
 import { Toaster } from '@/components/ui/sonner';
 import { SWRegister } from '@/components/brand/sw-register';
 
@@ -70,9 +71,11 @@ export default function RootLayout({
       <body className={`${inter.variable} ${poppins.variable} font-sans antialiased`}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <AuthProvider>
-            {children}
-            <Toaster richColors position="top-center" />
-            <SWRegister />
+            <I18nProvider>
+              {children}
+              <Toaster richColors position="top-center" />
+              <SWRegister />
+            </I18nProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

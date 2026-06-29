@@ -29,6 +29,7 @@ import {
   Pause,
   RotateCcw,
   X,
+  FileDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Journal, MoodEntry, WaterEntry, ChecklistItem, Photo, PomodoroSession } from '@/lib/types';
@@ -173,6 +174,45 @@ export default function JournalPage() {
     }
   };
 
+  const exportPDF = () => {
+    const moodEmoji = mood ? moodOptions.find((m) => m.value === mood.mood)?.emoji ?? '' : '';
+    const checklistHtml = checklist.map((c) =>
+      `<li style="margin-bottom:4px">${c.is_completed ? '☑' : '☐'} ${c.content}</li>`,
+    ).join('');
+    const photoHtml = photos.map((p) => {
+      const url = photoUrls[p.storage_path];
+      return url ? `<img src="${url}" style="max-width:200px;border-radius:8px;margin:4px" />` : '';
+    }).join('');
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Journal — ${date}</title>
+    <style>
+      body { font-family: Georgia, serif; max-width: 700px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; line-height: 1.6; }
+      h1 { font-size: 24px; border-bottom: 2px solid #0000FF; padding-bottom: 8px; }
+      .meta { color: #666; font-size: 14px; margin-bottom: 24px; }
+      h2 { font-size: 16px; color: #0000FF; margin-top: 24px; }
+      .quote { border-left: 3px solid #F4C542; padding-left: 12px; font-style: italic; color: #555; }
+      ul { padding-left: 20px; }
+      .photos { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    </style></head><body>
+    <h1>Let's Journaling</h1>
+    <div class="meta">${new Date(date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} ${moodEmoji ? '· ' + moodEmoji : ''}</div>
+    ${form.what_happened ? `<h2>What happened</h2><p>${form.what_happened.replace(/</g, '&lt;')}</p>` : ''}
+    ${form.what_i_learned ? `<h2>What I learned</h2><p>${form.what_i_learned.replace(/</g, '&lt;')}</p>` : ''}
+    ${form.what_to_improve ? `<h2>What to improve</h2><p>${form.what_to_improve.replace(/</g, '&lt;')}</p>` : ''}
+    ${form.grateful_for ? `<h2>Grateful for</h2><p>${form.grateful_for.replace(/</g, '&lt;')}</p>` : ''}
+    ${form.free_notes ? `<h2>Notes</h2><p>${form.free_notes.replace(/</g, '&lt;').replace(/\n/g, '<br/>')}</p>` : ''}
+    ${form.motivation_quote ? `<div class="quote">"${form.motivation_quote.replace(/</g, '&lt;')}"</div>` : ''}
+    ${checklist.length > 0 ? `<h2>Checklist</h2><ul>${checklistHtml}</ul>` : ''}
+    ${photoHtml ? `<h2>Photos</h2><div class="photos">${photoHtml}</div>` : ''}
+    </body></html>`;
+
+    const win = window.open('', '_blank');
+    if (!win) { toast.error('Please allow popups to export PDF'); return; }
+    win.document.write(html);
+    win.document.close();
+    setTimeout(() => { win.print(); }, 500);
+  };
+
   const setMoodValue = async (value: number) => {
     if (!user) return;
     try {
@@ -288,10 +328,15 @@ export default function JournalPage() {
           <Input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-auto" />
           <Badge variant="secondary" className="capitalize">{form.visibility}</Badge>
         </div>
-        <Button onClick={saveJournal} disabled={saving} className="gap-2">
-          {saving ? <Sparkles className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          {saving ? 'Saving…' : 'Save Journal'}
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={exportPDF} className="gap-2">
+            <FileDown className="h-4 w-4" /> Export PDF
+          </Button>
+          <Button onClick={saveJournal} disabled={saving} className="gap-2">
+            {saving ? <Sparkles className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {saving ? 'Saving…' : 'Save Journal'}
+          </Button>
+        </div>
       </div>
 
       {/* Mood */}
