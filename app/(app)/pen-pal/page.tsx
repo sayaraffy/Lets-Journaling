@@ -16,7 +16,7 @@ import type { Profile, PenPalMessage, Friend } from '@/lib/types';
 export default function PenPalPage() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
-  const [friends, setFriends] = useState<(Friend & { profile: Profile })[]>([]);
+  const [friends, setFriends] = useState<(Friend & { friend: Profile })[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get('to'));
   const [messages, setMessages] = useState<PenPalMessage[]>([]);
   const [body, setBody] = useState('');
