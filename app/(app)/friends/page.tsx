@@ -38,6 +38,9 @@ export default function FriendsPage() {
     console.log('Friend Requests Response:', rRes);
     console.log('Friend Requests Data:', rRes.data);
     console.log('Friend Requests Error:', rRes.error);
+    console.log('Friends Response:', fRes);
+console.log('Friends Data:', fRes.data);
+console.log('Friends Error:', fRes.error);
     
     setFriends((fRes.data as any) ?? []);
     setRequests((rRes.data as any) ?? []);
