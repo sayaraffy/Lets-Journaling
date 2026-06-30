@@ -50,10 +50,13 @@ export default function EditProfilePage() {
 
   const uploadAvatar = async (file: File) => {
     if (!user) return;
+    if (!file.type.startsWith('image/')) { toast.error('Please select an image file'); return; }
+    if (file.size > 5 * 1024 * 1024) { toast.error('Image must be under 5 MB'); return; }
     setUploadingAvatar(true);
-    const path = `${user.id}/avatar-${Date.now()}.${file.name.split('.').pop()}`;
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+    const path = `${user.id}/avatar-${Date.now()}.${ext}`;
     try {
-      const { error } = await supabase.storage.from('avatars').upload(path, file);
+      const { error } = await supabase.storage.from('avatars').upload(path, file, { contentType: file.type, upsert: false });
       if (error) throw error;
       const { data } = supabase.storage.from('avatars').getPublicUrl(path);
       setAvatarUrl(data.publicUrl);
@@ -67,10 +70,13 @@ export default function EditProfilePage() {
 
   const uploadCover = async (file: File) => {
     if (!user) return;
+    if (!file.type.startsWith('image/')) { toast.error('Please select an image file'); return; }
+    if (file.size > 5 * 1024 * 1024) { toast.error('Image must be under 5 MB'); return; }
     setUploadingCover(true);
-    const path = `${user.id}/cover-${Date.now()}.${file.name.split('.').pop()}`;
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+    const path = `${user.id}/cover-${Date.now()}.${ext}`;
     try {
-      const { error } = await supabase.storage.from('avatars').upload(path, file);
+      const { error } = await supabase.storage.from('avatars').upload(path, file, { contentType: file.type, upsert: false });
       if (error) throw error;
       const { data } = supabase.storage.from('avatars').getPublicUrl(path);
       setCoverUrl(data.publicUrl);

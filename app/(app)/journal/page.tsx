@@ -78,7 +78,7 @@ export default function JournalPage() {
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [newChecklist, setNewChecklist] = useState('');
   const [photos, setPhotos] = useState<Photo[]>([]);
-  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [pomodoroSessions, setPomodoroSessions] = useState<PomodoroSession[]>([]);
 
   const focus = searchParams.get('focus');
@@ -91,7 +91,7 @@ export default function JournalPage() {
       supabase.from('mood_entries').select('*').eq('user_id', user.id).eq('mood_date', date).maybeSingle(),
       supabase.from('water_entries').select('*').eq('user_id', user.id).eq('water_date', date).maybeSingle(),
       supabase.from('checklist_items').select('*').eq('user_id', user.id).eq('due_date', date).order('created_at'),
-      supabase.from('photos').select('*').eq('user_id', user.id).eq('journal_id', null).order('created_at', { ascending: false }),
+      supabase.from('photos').select('*').eq('user_id', user.id).is('journal_id', null).order('created_at', { ascending: false }),
       supabase.from('pomodoro_sessions').select('*').eq('user_id', user.id).eq('session_type', 'work').gte('completed_at', `${date}T00:00:00`).lte('completed_at', `${date}T23:59:59`).order('completed_at', { ascending: false }),
     ]);
 
@@ -115,32 +115,22 @@ export default function JournalPage() {
     setMoodNote((m.data as MoodEntry | null)?.note ?? '');
     setWater(w.data as WaterEntry | null);
     setChecklist((c.data as ChecklistItem[]) ?? []);
-    setPhotos((p.data as Photo[]) ?? []);
     setPomodoroSessions((ps.data as PomodoroSession[]) ?? []);
     setLoading(false);
+
+    // Load photos attached to this journal (if journal exists)
+    if (jData) {
+      const { data: jPhotos } = await supabase.from('photos').select('*').eq('user_id', user.id).eq('journal_id', jData.id).order('created_at', { ascending: false });
+      setPhotos([...((jPhotos as Photo[]) ?? []), ...((p.data as Photo[]) ?? [])]);
+    } else {
+      setPhotos((p.data as Photo[]) ?? []);
+    }
   }, [user, date]);
 
   useEffect(() => { load(); }, [load]);
 
-  // Generate signed URLs for private photos bucket
-  useEffect(() => {
-    if (photos.length === 0) {
-      setPhotoUrls({});
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      const paths = photos.map((p) => p.storage_path);
-      const { data, error } = await supabase.storage.from('photos').createSignedUrls(paths, 3600);
-      if (cancelled || error || !data) return;
-      const map: Record<string, string> = {};
-      data.forEach((d, i) => {
-        if (d.signedUrl) map[paths[i]] = d.signedUrl;
-      });
-      setPhotoUrls(map);
-    })();
-    return () => { cancelled = true; };
-  }, [photos]);
+  // Get public URLs for photos (bucket is public)
+  const getPhotoUrl = (path: string) => supabase.storage.from('photos').getPublicUrl(path).data.publicUrl;
 
   const saveJournal = async () => {
     if (!user) return;
@@ -158,13 +148,22 @@ export default function JournalPage() {
       tags: form.tags ? form.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
     };
     try {
+      let journalId: string;
       if (journal) {
         const { error } = await supabase.from('journals').update(payload).eq('id', journal.id);
         if (error) throw error;
+        journalId = journal.id;
       } else {
         const { data, error } = await supabase.from('journals').insert(payload).select().single();
         if (error) throw error;
         setJournal(data as Journal);
+        journalId = (data as Journal).id;
+      }
+      // Attach unattached photos to this journal
+      const unattached = photos.filter((p) => !p.journal_id);
+      if (unattached.length > 0) {
+        await supabase.from('photos').update({ journal_id: journalId }).in('id', unattached.map((p) => p.id));
+        setPhotos(photos.map((p) => p.journal_id ? p : { ...p, journal_id: journalId }));
       }
       toast.success('Journal saved');
     } catch (err) {
@@ -180,7 +179,7 @@ export default function JournalPage() {
       `<li style="margin-bottom:4px">${c.is_completed ? '☑' : '☐'} ${c.content}</li>`,
     ).join('');
     const photoHtml = photos.map((p) => {
-      const url = photoUrls[p.storage_path];
+      const url = getPhotoUrl(p.storage_path);
       return url ? `<img src="${url}" style="max-width:200px;border-radius:8px;margin:4px" />` : '';
     }).join('');
 
@@ -291,15 +290,26 @@ export default function JournalPage() {
     }
     const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
     const path = `${user.id}/${date}/${crypto.randomUUID()}.${ext}`;
+    setUploadProgress(0);
     try {
-      const { error: upErr } = await supabase.storage.from('photos').upload(path, file);
+      const { error: upErr } = await supabase.storage.from('photos').upload(path, file, {
+        upsert: false,
+        contentType: file.type,
+      });
       if (upErr) throw upErr;
-      const { data, error } = await supabase.from('photos').insert({ user_id: user.id, storage_path: path }).select().single();
+      setUploadProgress(100);
+      const { data, error } = await supabase.from('photos').insert({
+        user_id: user.id,
+        storage_path: path,
+        journal_id: journal?.id ?? null,
+      }).select().single();
       if (error) throw error;
       setPhotos([data as Photo, ...photos]);
       toast.success('Photo uploaded');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setTimeout(() => setUploadProgress(null), 500);
     }
   };
 
@@ -312,8 +322,6 @@ export default function JournalPage() {
       toast.error('Failed to delete photo');
     }
   };
-
-  const getPhotoUrl = (path: string) => photoUrls[path] ?? '';
 
   if (loading) {
     return <div className="space-y-4">{[1, 2, 3].map((i) => <div key={i} className="h-40 animate-pulse-soft rounded-2xl bg-muted" />)}</div>;
@@ -469,16 +477,32 @@ export default function JournalPage() {
           <CardTitle className="flex items-center gap-2 text-base"><ImagePlus className="h-4 w-4 text-brand-600" /> Photos</CardTitle>
         </CardHeader>
         <CardContent>
-          <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border p-6 transition-colors hover:border-brand-400 hover:bg-brand-50/50 dark:hover:bg-brand-900/10">
+          <label
+            className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border p-6 transition-colors hover:border-brand-400 hover:bg-brand-50/50 dark:hover:bg-brand-900/10"
+            onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-brand-400', 'bg-brand-50/50'); }}
+            onDragLeave={(e) => { e.currentTarget.classList.remove('border-brand-400', 'bg-brand-50/50'); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.currentTarget.classList.remove('border-brand-400', 'bg-brand-50/50');
+              const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
+              files.forEach(uploadPhoto);
+            }}
+          >
             <ImagePlus className="h-6 w-6 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">Click to upload a photo</span>
+            <span className="text-sm text-muted-foreground">Click or drag photos here to upload</span>
             <input
               type="file"
               accept="image/*"
+              multiple
               className="hidden"
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadPhoto(f); e.target.value = ''; }}
+              onChange={(e) => { const files = Array.from(e.target.files ?? []); files.forEach(uploadPhoto); e.target.value = ''; }}
             />
           </label>
+          {uploadProgress !== null && (
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
+              <div className="h-full bg-brand-600 transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+            </div>
+          )}
           {photos.length > 0 && (
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
               {photos.map((p) => (

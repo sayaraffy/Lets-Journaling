@@ -28,6 +28,7 @@ export default function FeedPage() {
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
   const [comments, setComments] = useState<Record<string, CommentWithProfile[]>>({});
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+  const [journalPhotos, setJournalPhotos] = useState<Record<string, string[]>>({});
   const [openComments, setOpenComments] = useState<Set<string>>(new Set());
   const [commentInput, setCommentInput] = useState('');
   const [posting, setPosting] = useState<string | null>(null);
@@ -41,7 +42,8 @@ export default function FeedPage() {
       .eq('visibility', 'public')
       .order('created_at', { ascending: false })
       .limit(50);
-    setJournals((data as FeedJournal[]) ?? []);
+    const jData = (data as FeedJournal[]) ?? [];
+    setJournals(jData);
 
     const [myLikes, mySaves, allLikes, myComments] = await Promise.all([
       supabase.from('journal_likes').select('journal_id').eq('user_id', user.id),
@@ -57,6 +59,19 @@ export default function FeedPage() {
     const cc: Record<string, number> = {};
     (myComments.data as { journal_id: string }[] | null)?.forEach((c) => { cc[c.journal_id] = (cc[c.journal_id] ?? 0) + 1; });
     setCommentCounts(cc);
+
+    // Load photos for public journals
+    if (jData.length > 0) {
+      const jIds = jData.map((j) => j.id);
+      const { data: photoData } = await supabase.from('photos').select('journal_id, storage_path').in('journal_id', jIds);
+      const photoMap: Record<string, string[]> = {};
+      (photoData as { journal_id: string; storage_path: string }[] | null)?.forEach((p) => {
+        if (!photoMap[p.journal_id]) photoMap[p.journal_id] = [];
+        photoMap[p.journal_id].push(supabase.storage.from('photos').getPublicUrl(p.storage_path).data.publicUrl);
+      });
+      setJournalPhotos(photoMap);
+    }
+
     setLoading(false);
   }, [user]);
 
@@ -208,6 +223,16 @@ export default function FeedPage() {
                   {j.motivation_quote && <p className="border-l-2 border-gold-400 pl-3 font-display italic text-foreground/80">&ldquo;{j.motivation_quote}&rdquo;</p>}
                 </div>
               </Link>
+
+              {journalPhotos[j.id] && journalPhotos[j.id].length > 0 && (
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {journalPhotos[j.id].slice(0, 4).map((url, i) => (
+                    <Link key={i} href={`/journal/${j.id}`}>
+                      <img src={url} alt="" className="aspect-square w-full cursor-pointer rounded-lg object-cover transition-transform hover:scale-105" />
+                    </Link>
+                  ))}
+                </div>
+              )}
 
               <div className="mt-4 flex items-center gap-1 border-t border-border pt-3">
                 <Button variant="ghost" size="sm" onClick={() => toggleLike(j)} className={cn('gap-1.5', likes.has(j.id) && 'text-destructive')}>

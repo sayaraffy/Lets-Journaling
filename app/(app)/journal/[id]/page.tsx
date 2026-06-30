@@ -32,6 +32,7 @@ export default function JournalDetailPage() {
   const [comments, setComments] = useState<CommentWithProfile[]>([]);
   const [commentInput, setCommentInput] = useState('');
   const [posting, setPosting] = useState(false);
+  const [photoUrls, setPhotoUrls] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     if (!journalId) return;
@@ -60,6 +61,14 @@ export default function JournalDetailPage() {
       setLikeCount(likeCountRes.count ?? 0);
       setComments((commentsRes.data as CommentWithProfile[]) ?? []);
     }
+
+    // Load photos for this journal
+    const { data: photoData } = await supabase.from('photos').select('storage_path').eq('journal_id', journalId).order('created_at', { ascending: true });
+    const urls = (photoData as { storage_path: string }[] | null)?.map((p) =>
+      supabase.storage.from('photos').getPublicUrl(p.storage_path).data.publicUrl,
+    ) ?? [];
+    setPhotoUrls(urls);
+
     setLoading(false);
   }, [journalId, user]);
 
@@ -212,6 +221,14 @@ export default function JournalDetailPage() {
           {journal.tags && journal.tags.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-1.5">
               {journal.tags.map((t) => <Badge key={t} variant="secondary" className="text-xs">#{t}</Badge>)}
+            </div>
+          )}
+
+          {photoUrls.length > 0 && (
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {photoUrls.map((url, i) => (
+                <img key={i} src={url} alt="" className="aspect-square w-full rounded-lg object-cover" />
+              ))}
             </div>
           )}
 
