@@ -30,6 +30,7 @@ export default function PenPalPage() {
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -113,12 +114,13 @@ export default function PenPalPage() {
           // If this is the selected conversation, add to messages
           if (msg.sender_id === selectedId && msg.receiver_id === user.id) {
             setMessages((prev) => [...prev, msg]);
-            // Auto-mark as read since we're viewing this conversation
-            supabase.from('pen_pal_messages').update({ read_at: new Date().toISOString() }).eq('id', msg.id).is('read_at', null);
+            // Auto-mark as delivered + read since we're viewing this conversation
+            supabase.from('pen_pal_messages').update({ delivered_at: new Date().toISOString(), read_at: new Date().toISOString() }).eq('id', msg.id);
           } else if (msg.sender_id === user.id && msg.receiver_id === selectedId) {
             setMessages((prev) => [...prev, msg]);
           } else if (msg.receiver_id === user.id) {
-            // Message from another conversation — show browser notification
+            // Message from another conversation — mark as delivered + show notification
+            supabase.from('pen_pal_messages').update({ delivered_at: new Date().toISOString() }).eq('id', msg.id).is('delivered_at', null);
             showNotification(msg);
           }
         }
@@ -167,6 +169,33 @@ export default function PenPalPage() {
       Notification.requestPermission();
     }
   }, []);
+
+  // Presence: track online status of all friends
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase.channel('online-presence', {
+      config: { presence: { key: user.id } },
+    });
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState();
+        const online = new Set<string>();
+        Object.keys(state).forEach((key) => online.add(key));
+        setOnlineUsers(online);
+      })
+      .on('presence', { event: 'join' }, ({ key }) => {
+        setOnlineUsers((prev) => new Set(prev).add(key));
+      })
+      .on('presence', { event: 'leave' }, ({ key }) => {
+        setOnlineUsers((prev) => { const n = new Set(prev); n.delete(key); return n; });
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await channel.track({ user_id: user.id, online_at: new Date().toISOString() });
+        }
+      });
+    return () => { supabase.removeChannel(channel); };
+  }, [user]);
 
   const showNotification = (msg: PenPalMessage) => {
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
@@ -276,6 +305,9 @@ export default function PenPalPage() {
                           {(c.friend?.username ?? '?').charAt(0).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
+                      {onlineUsers.has(c.friendId) && (
+                        <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-card bg-success" />
+                      )}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
@@ -326,8 +358,12 @@ export default function PenPalPage() {
                           <span className="h-1 w-1 animate-bounce rounded-full bg-brand-600" />
                         </span>
                       </p>
+                    ) : selectedId && onlineUsers.has(selectedId) ? (
+                      <p className="flex items-center gap-1.5 text-xs text-success">
+                        <span className="h-2 w-2 rounded-full bg-success" /> Online
+                      </p>
                     ) : (
-                      <p className="text-xs text-muted-foreground">Letter exchange</p>
+                      <p className="text-xs text-muted-foreground">Offline</p>
                     )}
                   </div>
                 </div>
@@ -341,6 +377,7 @@ export default function PenPalPage() {
                   ) : (
                     messages.map((m) => {
                       const mine = m.sender_id === user?.id;
+                      const isTemp = m.id.startsWith('temp-');
                       return (
                         <div key={m.id} className={cn('flex', mine ? 'justify-end' : 'justify-start')}>
                           <div className={cn('max-w-[75%] rounded-2xl px-4 py-2.5', mine ? 'bg-primary text-primary-foreground' : 'bg-muted')}>
@@ -348,7 +385,15 @@ export default function PenPalPage() {
                             <div className={cn('mt-1 flex items-center justify-end gap-1 text-xs', mine ? 'text-primary-foreground/60' : 'text-muted-foreground')}>
                               <span>{formatTime(m.created_at)}</span>
                               {mine && (
-                                m.read_at ? <CheckCheck className="h-3 w-3" /> : <Check className="h-3 w-3" />
+                                isTemp ? (
+                                  <span className="text-primary-foreground/40">…</span>
+                                ) : m.read_at ? (
+                                  <CheckCheck className="h-3 w-3 text-blue-300" />
+                                ) : m.delivered_at ? (
+                                  <CheckCheck className="h-3 w-3" />
+                                ) : (
+                                  <Check className="h-3 w-3" />
+                                )
                               )}
                             </div>
                           </div>

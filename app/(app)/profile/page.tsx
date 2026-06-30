@@ -27,6 +27,8 @@ export default function MyProfilePage() {
   const [moodData, setMoodData] = useState<MoodEntry[]>([]);
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+  const [journalMoods, setJournalMoods] = useState<Record<string, number>>({});
+  const [journalPhotos, setJournalPhotos] = useState<Record<string, string[]>>({});
   const [stats, setStats] = useState({
     totalJournals: 0, publicJournals: 0, privateJournals: 0, friendsJournals: 0,
     totalActivities: 0, avgMood: 0, monthlyCount: [] as { month: string; count: number }[],
@@ -53,9 +55,10 @@ export default function MyProfilePage() {
 
     if (publicJ.length > 0) {
       const ids = publicJ.map((j) => j.id);
-      const [lRes, cRes] = await Promise.all([
+      const [lRes, cRes, pRes] = await Promise.all([
         supabase.from('journal_likes').select('journal_id').in('journal_id', ids),
         supabase.from('journal_comments').select('journal_id').in('journal_id', ids),
+        supabase.from('photos').select('journal_id, storage_path').in('journal_id', ids),
       ]);
       const lc: Record<string, number> = {};
       (lRes.data as { journal_id: string }[] | null)?.forEach((l) => { lc[l.journal_id] = (lc[l.journal_id] ?? 0) + 1; });
@@ -63,7 +66,18 @@ export default function MyProfilePage() {
       const cc: Record<string, number> = {};
       (cRes.data as { journal_id: string }[] | null)?.forEach((c) => { cc[c.journal_id] = (cc[c.journal_id] ?? 0) + 1; });
       setCommentCounts(cc);
+      const photoMap: Record<string, string[]> = {};
+      (pRes.data as { journal_id: string; storage_path: string }[] | null)?.forEach((p) => {
+        if (!photoMap[p.journal_id]) photoMap[p.journal_id] = [];
+        photoMap[p.journal_id].push(supabase.storage.from('photos').getPublicUrl(p.storage_path).data.publicUrl);
+      });
+      setJournalPhotos(photoMap);
     }
+
+    // Map mood entries to journal dates
+    const moodMap: Record<string, number> = {};
+    (mRes.data as MoodEntry[] | null)?.forEach((m) => { moodMap[m.mood_date] = m.mood; });
+    setJournalMoods(moodMap);
 
     const avgMood = mRes.data && mRes.data.length > 0
       ? mRes.data.reduce((sum, m) => sum + (m as MoodEntry).mood, 0) / mRes.data.length
@@ -192,24 +206,42 @@ export default function MyProfilePage() {
               </CardContent>
             </Card>
           ) : (
-            publicJournals.map((j) => (
-              <Link key={j.id} href={`/journal/${j.id}`}>
-                <Card className="cursor-pointer transition-shadow hover:shadow-md">
-                  <CardContent className="p-4">
-                    <div className="mb-2 flex items-center justify-between">
-                      <Badge variant="secondary" className="text-xs">{new Date(j.journal_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</Badge>
-                      <Badge variant="outline" className="gap-1 text-xs"><Globe className="h-3 w-3" /> Public</Badge>
-                    </div>
-                    {j.what_happened && <p className="line-clamp-2 text-sm text-foreground/90">{j.what_happened}</p>}
-                    {j.free_notes && <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{j.free_notes}</p>}
-                    <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1"><Heart className="h-3.5 w-3.5" /> {likeCounts[j.id] ?? 0}</span>
-                      <span className="flex items-center gap-1"><MessageCircle className="h-3.5 w-3.5" /> {commentCounts[j.id] ?? 0}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            ))
+            publicJournals.map((j) => {
+              const mood = journalMoods[j.journal_date];
+              const moodEmoji = mood === 5 ? '😄' : mood === 4 ? '🙂' : mood === 3 ? '😐' : mood === 2 ? '😕' : mood === 1 ? '😢' : null;
+              const photos = journalPhotos[j.id] ?? [];
+              return (
+                <Link key={j.id} href={`/journal/${j.id}`}>
+                  <Card className="cursor-pointer overflow-hidden transition-shadow hover:shadow-md">
+                    {photos.length > 0 && (
+                      <div className="aspect-[3/1] w-full overflow-hidden">
+                        <img src={photos[0]} alt="" className="h-full w-full object-cover" />
+                      </div>
+                    )}
+                    <CardContent className="p-4">
+                      <div className="mb-2 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          {moodEmoji && <span className="text-lg">{moodEmoji}</span>}
+                          <Badge variant="secondary" className="text-xs">{new Date(j.journal_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</Badge>
+                        </div>
+                        <Badge variant="outline" className="gap-1 text-xs"><Globe className="h-3 w-3" /> Public</Badge>
+                      </div>
+                      {j.what_happened && <p className="line-clamp-2 text-sm text-foreground/90">{j.what_happened}</p>}
+                      {j.free_notes && <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{j.free_notes}</p>}
+                      {j.tags && j.tags.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {j.tags.slice(0, 3).map((t) => <Badge key={t} variant="secondary" className="text-xs">#{t}</Badge>)}
+                        </div>
+                      )}
+                      <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1"><Heart className="h-3.5 w-3.5" /> {likeCounts[j.id] ?? 0}</span>
+                        <span className="flex items-center gap-1"><MessageCircle className="h-3.5 w-3.5" /> {commentCounts[j.id] ?? 0}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              );
+            })
           )}
         </TabsContent>
 

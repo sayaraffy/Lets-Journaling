@@ -63,6 +63,29 @@ console.log('Friends Error:', fRes.error);
   const sendRequest = async (receiverId: string) => {
     if (!user) return;
     try {
+      // Check if already friends
+      const { data: existingFriend } = await supabase.from('friends')
+        .select('id').eq('user_id', user.id).eq('friend_id', receiverId).maybeSingle();
+      if (existingFriend) {
+        toast.info('You are already friends');
+        setResults(results.filter((r) => r.id !== receiverId));
+        return;
+      }
+      // Check for existing pending request (either direction)
+      const { data: existingReq } = await supabase.from('friend_requests')
+        .select('id, sender_id, status')
+        .or(`and(sender_id.eq.${user.id},receiver_id.eq.${receiverId}),and(sender_id.eq.${receiverId},receiver_id.eq.${user.id})`)
+        .eq('status', 'pending')
+        .maybeSingle();
+      if (existingReq) {
+        if (existingReq.sender_id === receiverId) {
+          toast.info('They already sent you a request — check your requests tab');
+        } else {
+          toast.info('Friend request already sent');
+        }
+        setResults(results.filter((r) => r.id !== receiverId));
+        return;
+      }
       const { error } = await supabase.from('friend_requests').insert({ sender_id: user.id, receiver_id: receiverId });
       if (error) throw error;
       toast.success('Friend request sent');

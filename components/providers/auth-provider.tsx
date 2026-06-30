@@ -30,12 +30,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const loadProfile = async (uid: string) => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', uid)
-      .maybeSingle();
-    setProfile(data as Profile | null);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', uid)
+        .maybeSingle();
+      if (error) {
+        console.error('Failed to load profile:', error.message);
+        return;
+      }
+      setProfile(data as Profile | null);
+    } catch (err) {
+      console.error('Profile load error:', err);
+    }
   };
 
   const refreshProfile = async () => {
@@ -44,29 +52,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
+    let profilePromise: Promise<void> | null = null;
 
     supabase.auth.getSession().then(({ data }) => {
       if (!mounted) return;
       setSession(data.session);
       setUser(data.session?.user ?? null);
       if (data.session?.user) {
-        loadProfile(data.session.user.id).finally(() => mounted && setLoading(false));
+        profilePromise = loadProfile(data.session.user.id);
+        profilePromise.finally(() => { if (mounted) setLoading(false); });
       } else {
         setLoading(false);
       }
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange((event, newSession) => {
-      (async () => {
-        setSession(newSession);
-        setUser(newSession?.user ?? null);
-        if (newSession?.user) {
-          await loadProfile(newSession.user.id);
-        } else {
-          setProfile(null);
-        }
+      if (!mounted) return;
+      setSession(newSession);
+      setUser(newSession?.user ?? null);
+      if (newSession?.user) {
+        loadProfile(newSession.user.id).finally(() => { if (mounted) setLoading(false); });
+      } else {
+        setProfile(null);
         setLoading(false);
-      })();
+      }
     });
 
     return () => {
