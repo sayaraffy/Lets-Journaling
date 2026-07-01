@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { Sidebar } from '@/components/app-shell/sidebar';
 import { Header } from '@/components/app-shell/header';
-import { QuickAdd } from '@/components/app-shell/quick-add';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -19,7 +18,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="mx-auto max-w-6xl">{children}</div>
         </main>
       </div>
-      <QuickAdd />
     </div>
   );
 }

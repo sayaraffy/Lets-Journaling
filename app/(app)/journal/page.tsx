@@ -17,22 +17,19 @@ import {
   CheckSquare,
   BookHeart,
   StickyNote,
-  ImagePlus,
-  Timer,
   Save,
   Plus,
   Trash2,
   CheckCircle2,
   Circle,
   Sparkles,
-  Play,
-  Pause,
-  RotateCcw,
-  X,
   FileDown,
+  Globe,
+  Users,
+  Lock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { Journal, MoodEntry, WaterEntry, ChecklistItem, Photo, PomodoroSession } from '@/lib/types';
+import type { Journal, MoodEntry, WaterEntry, ChecklistItem } from '@/lib/types';
 
 const moodOptions = [
   { value: 1, emoji: '😔', label: 'Low', color: 'bg-destructive/15 text-destructive border-destructive/30' },
@@ -51,6 +48,12 @@ const quotes = [
   'Be the change you wish to see in the world.',
   'The best time to plant a tree was 20 years ago. The second best time is now.',
 ];
+
+const visibilityOptions = [
+  { value: 'private', label: 'Private', icon: Lock, description: 'Only you can see this' },
+  { value: 'friends', label: 'Friends', icon: Users, description: 'Only your friends can see this' },
+  { value: 'public', label: 'Public', icon: Globe, description: 'Everyone can see this' },
+] as const;
 
 export default function JournalPage() {
   const searchParams = useSearchParams();
@@ -77,22 +80,15 @@ export default function JournalPage() {
   const [water, setWater] = useState<WaterEntry | null>(null);
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [newChecklist, setNewChecklist] = useState('');
-  const [photos, setPhotos] = useState<Photo[]>([]);
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
-  const [pomodoroSessions, setPomodoroSessions] = useState<PomodoroSession[]>([]);
-
-  const focus = searchParams.get('focus');
 
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
-    const [j, m, w, c, p, ps] = await Promise.all([
+    const [j, m, w, c] = await Promise.all([
       supabase.from('journals').select('*').eq('user_id', user.id).eq('journal_date', date).maybeSingle(),
       supabase.from('mood_entries').select('*').eq('user_id', user.id).eq('mood_date', date).maybeSingle(),
       supabase.from('water_entries').select('*').eq('user_id', user.id).eq('water_date', date).maybeSingle(),
       supabase.from('checklist_items').select('*').eq('user_id', user.id).eq('due_date', date).order('created_at'),
-      supabase.from('photos').select('*').eq('user_id', user.id).is('journal_id', null).order('created_at', { ascending: false }),
-      supabase.from('pomodoro_sessions').select('*').eq('user_id', user.id).eq('session_type', 'work').gte('completed_at', `${date}T00:00:00`).lte('completed_at', `${date}T23:59:59`).order('completed_at', { ascending: false }),
     ]);
 
     const jData = j.data as Journal | null;
@@ -115,22 +111,10 @@ export default function JournalPage() {
     setMoodNote((m.data as MoodEntry | null)?.note ?? '');
     setWater(w.data as WaterEntry | null);
     setChecklist((c.data as ChecklistItem[]) ?? []);
-    setPomodoroSessions((ps.data as PomodoroSession[]) ?? []);
     setLoading(false);
-
-    // Load photos attached to this journal (if journal exists)
-    if (jData) {
-      const { data: jPhotos } = await supabase.from('photos').select('*').eq('user_id', user.id).eq('journal_id', jData.id).order('created_at', { ascending: false });
-      setPhotos([...((jPhotos as Photo[]) ?? []), ...((p.data as Photo[]) ?? [])]);
-    } else {
-      setPhotos((p.data as Photo[]) ?? []);
-    }
   }, [user, date]);
 
   useEffect(() => { load(); }, [load]);
-
-  // Get public URLs for photos (bucket is public)
-  const getPhotoUrl = (path: string) => supabase.storage.from('photos').getPublicUrl(path).data.publicUrl;
 
   const saveJournal = async () => {
     if (!user) return;
@@ -148,22 +132,13 @@ export default function JournalPage() {
       tags: form.tags ? form.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
     };
     try {
-      let journalId: string;
       if (journal) {
         const { error } = await supabase.from('journals').update(payload).eq('id', journal.id);
         if (error) throw error;
-        journalId = journal.id;
       } else {
         const { data, error } = await supabase.from('journals').insert(payload).select().single();
         if (error) throw error;
         setJournal(data as Journal);
-        journalId = (data as Journal).id;
-      }
-      // Attach unattached photos to this journal
-      const unattached = photos.filter((p) => !p.journal_id);
-      if (unattached.length > 0) {
-        await supabase.from('photos').update({ journal_id: journalId }).in('id', unattached.map((p) => p.id));
-        setPhotos(photos.map((p) => p.journal_id ? p : { ...p, journal_id: journalId }));
       }
       toast.success('Journal saved');
     } catch (err) {
@@ -178,10 +153,6 @@ export default function JournalPage() {
     const checklistHtml = checklist.map((c) =>
       `<li style="margin-bottom:4px">${c.is_completed ? '☑' : '☐'} ${c.content}</li>`,
     ).join('');
-    const photoHtml = photos.map((p) => {
-      const url = getPhotoUrl(p.storage_path);
-      return url ? `<img src="${url}" style="max-width:200px;border-radius:8px;margin:4px" />` : '';
-    }).join('');
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Journal — ${date}</title>
     <style>
@@ -191,7 +162,6 @@ export default function JournalPage() {
       h2 { font-size: 16px; color: #0000FF; margin-top: 24px; }
       .quote { border-left: 3px solid #F4C542; padding-left: 12px; font-style: italic; color: #555; }
       ul { padding-left: 20px; }
-      .photos { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
     </style></head><body>
     <h1>Let's Journaling</h1>
     <div class="meta">${new Date(date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} ${moodEmoji ? '· ' + moodEmoji : ''}</div>
@@ -202,7 +172,6 @@ export default function JournalPage() {
     ${form.free_notes ? `<h2>Notes</h2><p>${form.free_notes.replace(/</g, '&lt;').replace(/\n/g, '<br/>')}</p>` : ''}
     ${form.motivation_quote ? `<div class="quote">"${form.motivation_quote.replace(/</g, '&lt;')}"</div>` : ''}
     ${checklist.length > 0 ? `<h2>Checklist</h2><ul>${checklistHtml}</ul>` : ''}
-    ${photoHtml ? `<h2>Photos</h2><div class="photos">${photoHtml}</div>` : ''}
     </body></html>`;
 
     const win = window.open('', '_blank');
@@ -278,63 +247,23 @@ export default function JournalPage() {
     }
   };
 
-  const uploadPhoto = async (file: File) => {
-    if (!user) return;
-    if (!file.type.startsWith('image/')) {
-      toast.error('Please select an image file');
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('Image must be under 10 MB');
-      return;
-    }
-    const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-    const path = `${user.id}/${date}/${crypto.randomUUID()}.${ext}`;
-    setUploadProgress(0);
-    try {
-      const { error: upErr } = await supabase.storage.from('photos').upload(path, file, {
-        upsert: false,
-        contentType: file.type,
-      });
-      if (upErr) throw upErr;
-      setUploadProgress(100);
-      const { data, error } = await supabase.from('photos').insert({
-        user_id: user.id,
-        storage_path: path,
-        journal_id: journal?.id ?? null,
-      }).select().single();
-      if (error) throw error;
-      setPhotos([data as Photo, ...photos]);
-      toast.success('Photo uploaded');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Upload failed');
-    } finally {
-      setTimeout(() => setUploadProgress(null), 500);
-    }
-  };
-
-  const deletePhoto = async (photo: Photo) => {
-    try {
-      await supabase.storage.from('photos').remove([photo.storage_path]);
-      await supabase.from('photos').delete().eq('id', photo.id);
-      setPhotos(photos.filter((p) => p.id !== photo.id));
-    } catch {
-      toast.error('Failed to delete photo');
-    }
-  };
-
   if (loading) {
     return <div className="space-y-4">{[1, 2, 3].map((i) => <div key={i} className="h-40 animate-pulse-soft rounded-2xl bg-muted" />)}</div>;
   }
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Date selector + save */}
+      {/* Date selector + actions */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <Label htmlFor="date" className="sr-only">Date</Label>
           <Input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-auto" />
-          <Badge variant="secondary" className="capitalize">{form.visibility}</Badge>
+          <Badge variant="secondary" className="capitalize gap-1">
+            {form.visibility === 'private' && <Lock className="h-3 w-3" />}
+            {form.visibility === 'friends' && <Users className="h-3 w-3" />}
+            {form.visibility === 'public' && <Globe className="h-3 w-3" />}
+            {form.visibility}
+          </Badge>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={exportPDF} className="gap-2">
@@ -471,104 +400,31 @@ export default function JournalPage() {
         </CardContent>
       </Card>
 
-      {/* Photos */}
-      <Card id="photos">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base"><ImagePlus className="h-4 w-4 text-brand-600" /> Photos</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <label
-            className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border p-6 transition-colors hover:border-brand-400 hover:bg-brand-50/50 dark:hover:bg-brand-900/10"
-            onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-brand-400', 'bg-brand-50/50'); }}
-            onDragLeave={(e) => { e.currentTarget.classList.remove('border-brand-400', 'bg-brand-50/50'); }}
-            onDrop={(e) => {
-              e.preventDefault();
-              e.currentTarget.classList.remove('border-brand-400', 'bg-brand-50/50');
-              const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
-              files.forEach(uploadPhoto);
-            }}
-          >
-            <ImagePlus className="h-6 w-6 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">Click or drag photos here to upload</span>
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={(e) => { const files = Array.from(e.target.files ?? []); files.forEach(uploadPhoto); e.target.value = ''; }}
-            />
-          </label>
-          {uploadProgress !== null && (
-            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
-              <div className="h-full bg-brand-600 transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
-            </div>
-          )}
-          {photos.length > 0 && (
-            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {photos.map((p) => (
-                <div key={p.id} className="group relative aspect-square overflow-hidden rounded-xl border border-border">
-                  <img src={getPhotoUrl(p.storage_path)} alt={p.caption ?? ''} className="h-full w-full object-cover" />
-                  <button
-                    onClick={() => deletePhoto(p)}
-                    className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-foreground/60 text-white opacity-0 transition-opacity group-hover:opacity-100"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Pomodoro */}
-      <Card id="pomodoro">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base"><Timer className="h-4 w-4 text-brand-600" /> Pomodoro Timer</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <PomodoroTimer
-            onComplete={async (minutes) => {
-              if (!user) return;
-              await supabase.from('pomodoro_sessions').insert({ user_id: user.id, session_type: 'work', duration_minutes: minutes });
-              load();
-              toast.success('Pomodoro complete! Take a break.');
-            }}
-          />
-          {pomodoroSessions.length > 0 && (
-            <div>
-              <p className="mb-2 text-xs font-medium text-muted-foreground">{pomodoroSessions.length} session(s) today</p>
-              <div className="flex flex-wrap gap-2">
-                {pomodoroSessions.map((s) => (
-                  <Badge key={s.id} variant="secondary" className="gap-1.5">
-                    <Timer className="h-3 w-3" /> {s.duration_minutes}m
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
       {/* Visibility + tags */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Visibility & Tags</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            {(['private', 'friends', 'public'] as const).map((v) => (
-              <button
-                key={v}
-                onClick={() => setForm({ ...form, visibility: v })}
-                className={cn(
-                  'rounded-lg border-2 px-4 py-2 text-sm font-medium capitalize transition-all',
-                  form.visibility === v ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:border-muted-foreground/30',
-                )}
-              >
-                {v}
-              </button>
-            ))}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Who can see this journal?</Label>
+            <div className="flex flex-wrap gap-2">
+              {visibilityOptions.map((v) => (
+                <button
+                  key={v.value}
+                  onClick={() => setForm({ ...form, visibility: v.value })}
+                  className={cn(
+                    'flex items-center gap-2 rounded-lg border-2 px-4 py-2.5 text-sm font-medium transition-all',
+                    form.visibility === v.value
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border hover:border-muted-foreground/30',
+                  )}
+                >
+                  <v.icon className="h-4 w-4" />
+                  {v.label}
+                </button>
+              ))}
+            </div>
           </div>
           <Input
             placeholder="Tags (comma separated) e.g. work, travel, family"
@@ -586,83 +442,6 @@ function ReflectionField({ label, value, onChange }: { label: string; value: str
     <div className="space-y-1.5">
       <Label className="text-sm font-medium">{label}</Label>
       <Textarea value={value} onChange={(e) => onChange(e.target.value)} rows={3} placeholder="Reflect here…" />
-    </div>
-  );
-}
-
-function PomodoroTimer({ onComplete }: { onComplete: (minutes: number) => void }) {
-  const [mode, setMode] = useState<'work' | 'short_break' | 'long_break'>('work');
-  const durations = { work: 25, short_break: 5, long_break: 15 };
-  const [secondsLeft, setSecondsLeft] = useState(durations.work * 60);
-  const [running, setRunning] = useState(false);
-
-  useEffect(() => {
-    setSecondsLeft(durations[mode] * 60);
-    setRunning(false);
-  }, [mode]);
-
-  useEffect(() => {
-    if (!running) return;
-    const id = setInterval(() => {
-      setSecondsLeft((s) => {
-        if (s <= 1) {
-          clearInterval(id);
-          setRunning(false);
-          if (mode === 'work') onComplete(durations.work);
-          return 0;
-        }
-        return s - 1;
-      });
-    }, 1000);
-    return () => clearInterval(id);
-  }, [running, mode, onComplete]);
-
-  const mins = Math.floor(secondsLeft / 60);
-  const secs = secondsLeft % 60;
-  const total = durations[mode] * 60;
-  const pct = ((total - secondsLeft) / total) * 100;
-
-  return (
-    <div className="flex flex-col items-center gap-4">
-      <div className="flex gap-2">
-        {(['work', 'short_break', 'long_break'] as const).map((m) => (
-          <button
-            key={m}
-            onClick={() => setMode(m)}
-            className={cn(
-              'rounded-lg px-3 py-1.5 text-xs font-medium capitalize transition-colors',
-              mode === m ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/70',
-            )}
-          >
-            {m.replace('_', ' ')}
-          </button>
-        ))}
-      </div>
-      <div className="relative flex h-40 w-40 items-center justify-center">
-        <svg className="absolute inset-0 -rotate-90" viewBox="0 0 100 100">
-          <circle cx="50" cy="50" r="45" fill="none" stroke="hsl(var(--muted))" strokeWidth="6" />
-          <circle
-            cx="50" cy="50" r="45" fill="none"
-            stroke="hsl(var(--primary))" strokeWidth="6"
-            strokeLinecap="round"
-            strokeDasharray={`${2 * Math.PI * 45}`}
-            strokeDashoffset={`${2 * Math.PI * 45 * (1 - pct / 100)}`}
-            className="transition-all duration-1000"
-          />
-        </svg>
-        <span className="font-display text-3xl font-semibold tabular-nums">
-          {String(mins).padStart(2, '0')}:{String(secs).padStart(2, '0')}
-        </span>
-      </div>
-      <div className="flex gap-2">
-        <Button onClick={() => setRunning((r) => !r)} size="sm" className="gap-2">
-          {running ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-          {running ? 'Pause' : 'Start'}
-        </Button>
-        <Button onClick={() => { setRunning(false); setSecondsLeft(durations[mode] * 60); }} size="sm" variant="outline" className="gap-2">
-          <RotateCcw className="h-4 w-4" /> Reset
-        </Button>
-      </div>
     </div>
   );
 }

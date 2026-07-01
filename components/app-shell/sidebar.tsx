@@ -10,25 +10,24 @@ import {
   CalendarDays,
   BookHeart,
   CalendarRange,
-  BarChart3,
   Users,
   PenTool,
   Settings,
   X,
-  Sparkles,
   Compass,
+  GraduationCap,
+  History,
 } from 'lucide-react';
 
 const navItems = [
   { href: '/today', label: 'Today', icon: CalendarDays },
   { href: '/journal', label: 'Daily Journal', icon: BookHeart },
   { href: '/activities', label: 'Activities', icon: CalendarRange },
-  { href: '/history', label: 'History', icon: BookHeart },
-  { href: '/stats', label: 'Statistics', icon: BarChart3 },
+  { href: '/study', label: 'Study', icon: GraduationCap },
+  { href: '/history', label: 'History', icon: History },
   { href: '/discover', label: 'Discover', icon: Compass },
   { href: '/friends', label: 'Friends', icon: Users },
   { href: '/pen-pal', label: 'Pen Pal', icon: PenTool },
-  { href: '/feed', label: 'Public Feed', icon: Sparkles },
 ];
 
 export function Sidebar({

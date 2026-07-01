@@ -4,11 +4,11 @@ import { useEffect, useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/components/providers/auth-provider';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, List, Search, ChevronLeft, ChevronRight, BookHeart, Smile, Droplets } from 'lucide-react';
+import { Calendar, List, Search, ChevronLeft, ChevronRight, BookHeart, Flame, Grid3X3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Journal, MoodEntry, WaterEntry } from '@/lib/types';
 
@@ -16,7 +16,7 @@ const moodEmojis: Record<number, string> = { 1: '😔', 2: '😕', 3: '😐', 4:
 
 export default function HistoryPage() {
   const { user } = useAuth();
-  const [view, setView] = useState<'calendar' | 'timeline'>('calendar');
+  const [view, setView] = useState<'calendar' | 'timeline' | 'heatmap'>('heatmap');
   const [search, setSearch] = useState('');
   const [journals, setJournals] = useState<Journal[]>([]);
   const [moods, setMoods] = useState<MoodEntry[]>([]);
@@ -52,6 +52,14 @@ export default function HistoryPage() {
     return map;
   }, [journals]);
 
+  const journalCountsByDate = useMemo(() => {
+    const map = new Map<string, number>();
+    journals.forEach((j) => {
+      map.set(j.journal_date, (map.get(j.journal_date) ?? 0) + 1);
+    });
+    return map;
+  }, [journals]);
+
   const filtered = useMemo(() => {
     if (!search.trim()) return journals;
     const q = search.toLowerCase();
@@ -65,6 +73,9 @@ export default function HistoryPage() {
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex gap-1 rounded-lg bg-muted p-1">
+          <button onClick={() => setView('heatmap')} className={cn('flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium', view === 'heatmap' ? 'bg-card shadow-soft' : 'text-muted-foreground')}>
+            <Grid3X3 className="h-4 w-4" /> Heatmap
+          </button>
           <button onClick={() => setView('calendar')} className={cn('flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium', view === 'calendar' ? 'bg-card shadow-soft' : 'text-muted-foreground')}>
             <Calendar className="h-4 w-4" /> Calendar
           </button>
@@ -80,6 +91,8 @@ export default function HistoryPage() {
 
       {loading ? (
         <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="h-24 animate-pulse-soft rounded-xl bg-muted" />)}</div>
+      ) : view === 'heatmap' ? (
+        <HeatmapView journalCountsByDate={journalCountsByDate} />
       ) : view === 'calendar' ? (
         <CalendarView cursor={cursor} setCursor={setCursor} journalByDate={journalByDate} moodByDate={moodByDate} />
       ) : (
@@ -198,5 +211,124 @@ function TimelineView({ journals, moodByDate }: { journals: Journal[]; moodByDat
         );
       })}
     </div>
+  );
+}
+
+function HeatmapView({ journalCountsByDate }: { journalCountsByDate: Map<string, number> }) {
+  const today = new Date();
+  const weeks: { date: Date; count: number }[][] = [];
+
+  // Generate last 52 weeks (like GitHub)
+  for (let w = 51; w >= 0; w--) {
+    const weekStart = new Date(today);
+    weekStart.setDate(weekStart.getDate() - (w * 7) - weekStart.getDay());
+    const week: { date: Date; count: number }[] = [];
+    for (let d = 0; d < 7; d++) {
+      const date = new Date(weekStart);
+      date.setDate(date.getDate() + d);
+      const dateStr = date.toISOString().slice(0, 10);
+      const count = journalCountsByDate.get(dateStr) ?? 0;
+      week.push({ date, count });
+    }
+    weeks.push(week);
+  }
+
+  // Calculate max count for scaling
+  const maxCount = Math.max(1, ...Array.from(journalCountsByDate.values()));
+  const totalCount = Array.from(journalCountsByDate.values()).reduce((a, b) => a + b, 0);
+
+  const getColor = (count: number) => {
+    if (count === 0) return 'bg-muted/50';
+    const level = Math.ceil((count / maxCount) * 4);
+    if (level === 1) return 'bg-brand-200 dark:bg-brand-800';
+    if (level === 2) return 'bg-brand-300 dark:bg-brand-700';
+    if (level === 3) return 'bg-brand-400 dark:bg-brand-600';
+    return 'bg-brand-500 dark:bg-brand-500';
+  };
+
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center justify-between text-base">
+          <span className="flex items-center gap-2">
+            <Flame className="h-4 w-4 text-brand-600" /> Writing Activity
+          </span>
+          <span className="text-sm font-normal text-muted-foreground">
+            {totalCount} entries in the last year
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {/* Month labels */}
+        <div className="mb-2 flex justify-start" style={{ marginLeft: '20px' }}>
+          <div className="flex w-full gap-1">
+            {weeks.map((week, i) => {
+              const firstDay = week[0];
+              const month = firstDay.date.getMonth();
+              const prevWeek = weeks[i - 1];
+              const showMonth = !prevWeek || prevWeek[0].date.getMonth() !== month;
+              return (
+                <div key={i} className="flex-1 text-[10px] text-muted-foreground" style={{ minWidth: '11px' }}>
+                  {showMonth ? months[month] : ''}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="flex gap-1">
+          {/* Day labels */}
+          <div className="flex flex-col gap-1 text-[10px] text-muted-foreground">
+            <div className="h-3" />
+            <div className="h-3 flex items-center">Mon</div>
+            <div className="h-3" />
+            <div className="h-3 flex items-center">Wed</div>
+            <div className="h-3" />
+            <div className="h-3 flex items-center">Fri</div>
+            <div className="h-3" />
+          </div>
+
+          {/* Heatmap grid */}
+          <div className="flex flex-1 gap-1 overflow-x-auto">
+            {weeks.map((week, wi) => (
+              <div key={wi} className="flex flex-col gap-1">
+                {week.map((day, di) => {
+                  const dateStr = day.date.toISOString().slice(0, 10);
+                  const isToday = dateStr === today.toISOString().slice(0, 10);
+                  const isFuture = day.date > today;
+                  return (
+                    <Link
+                      key={di}
+                      href={`/journal?date=${dateStr}`}
+                      title={`${day.date.toLocaleDateString()} — ${day.count} entries`}
+                      className={cn(
+                        'h-3 w-3 rounded-sm transition-all hover:ring-2 hover:ring-primary',
+                        isFuture ? 'bg-transparent' : getColor(day.count),
+                        isToday && 'ring-2 ring-primary',
+                      )}
+                    />
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Legend */}
+        <div className="mt-4 flex items-center justify-end gap-2 text-xs text-muted-foreground">
+          <span>Less</span>
+          <div className="flex gap-0.5">
+            <div className="h-3 w-3 rounded-sm bg-muted/50" />
+            <div className="h-3 w-3 rounded-sm bg-brand-200 dark:bg-brand-800" />
+            <div className="h-3 w-3 rounded-sm bg-brand-300 dark:bg-brand-700" />
+            <div className="h-3 w-3 rounded-sm bg-brand-400 dark:bg-brand-600" />
+            <div className="h-3 w-3 rounded-sm bg-brand-500" />
+          </div>
+          <span>More</span>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

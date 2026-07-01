@@ -31,7 +31,7 @@ export default function MyProfilePage() {
   const [journalPhotos, setJournalPhotos] = useState<Record<string, string[]>>({});
   const [stats, setStats] = useState({
     totalJournals: 0, publicJournals: 0, privateJournals: 0, friendsJournals: 0,
-    totalActivities: 0, avgMood: 0, monthlyCount: [] as { month: string; count: number }[],
+    totalActivities: 0, avgStudyMinutes: 0, monthlyCount: [] as { month: string; count: number }[],
   });
   const [loading, setLoading] = useState(true);
 
@@ -79,9 +79,17 @@ export default function MyProfilePage() {
     (mRes.data as MoodEntry[] | null)?.forEach((m) => { moodMap[m.mood_date] = m.mood; });
     setJournalMoods(moodMap);
 
-    const avgMood = mRes.data && mRes.data.length > 0
-      ? mRes.data.reduce((sum, m) => sum + (m as MoodEntry).mood, 0) / mRes.data.length
-      : 0;
+    // Calculate avg daily study time from last 30 days
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const { data: studyData } = await supabase
+      .from('pomodoro_sessions')
+      .select('completed_at, duration_minutes')
+      .eq('user_id', user.id)
+      .eq('session_type', 'work')
+      .gte('completed_at', thirtyDaysAgo.toISOString());
+    const totalStudyMinutes = (studyData as { duration_minutes: number }[] | null)?.reduce((sum, s) => sum + s.duration_minutes, 0) ?? 0;
+    const avgStudyMinutes = Math.round(totalStudyMinutes / 30);
 
     const monthly: Record<string, number> = {};
     jData.forEach((j) => {
@@ -96,7 +104,7 @@ export default function MyProfilePage() {
       privateJournals: privateJ.length,
       friendsJournals: friendsJ.length,
       totalActivities: aRes.count ?? 0,
-      avgMood: Math.round(avgMood * 10) / 10,
+      avgStudyMinutes,
       monthlyCount: monthlyArr,
     });
     setLoading(false);
@@ -177,7 +185,7 @@ export default function MyProfilePage() {
             <Stat icon={Flame} label="Streak" value={`${profile.streak}d`} color="text-gold-500" />
             <Stat icon={BookHeart} label="Journals" value={`${stats.totalJournals}`} color="text-brand-600" />
             <Stat icon={CheckCircle2} label="Activities" value={`${stats.totalActivities}`} color="text-success" />
-            <Stat icon={TrendingUp} label="Avg Mood" value={stats.avgMood > 0 ? `${stats.avgMood}/5` : '—'} color="text-purple-500" />
+            <Stat icon={TrendingUp} label="Avg Study" value={stats.avgStudyMinutes > 0 ? `${stats.avgStudyMinutes}m/d` : '—'} color="text-purple-500" />
           </div>
 
           <div className="mt-3 flex flex-wrap gap-2 text-xs">

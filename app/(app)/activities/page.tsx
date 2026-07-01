@@ -17,7 +17,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Plus, CalendarPlus, MapPin, Clock, Trash2, CheckCircle2, Circle, Pencil, X } from 'lucide-react';
+import { Plus, CalendarPlus, MapPin, Clock, Trash2, CheckCircle2, Circle, Pencil, X, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Activity } from '@/lib/types';
 
@@ -131,11 +131,23 @@ function ActivityRow({ activity, onEdit, onReload }: { activity: Activity; onEdi
   };
   const del = async () => {
     await supabase.from('activities').delete().eq('id', activity.id);
-    const { syncActivityToGoogle } = await import('@/lib/google-calendar');
-    await syncActivityToGoogle('delete', activity).catch(() => {});
     onReload();
     toast.success('Activity deleted');
   };
+
+  const addToGoogleCalendar = () => {
+    const startDate = new Date(activity.start_time);
+    const endDate = activity.end_time ? new Date(activity.end_time) : new Date(startDate.getTime() + 60 * 60 * 1000);
+    const formatDate = (d: Date) => d.toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
+    const url = new URL('https://calendar.google.com/calendar/render');
+    url.searchParams.set('action', 'TEMPLATE');
+    url.searchParams.set('text', activity.title);
+    url.searchParams.set('dates', `${formatDate(startDate)}/${formatDate(endDate)}`);
+    if (activity.location) url.searchParams.set('location', activity.location);
+    if (activity.description) url.searchParams.set('details', activity.description);
+    window.open(url.toString(), '_blank');
+  };
+
   return (
     <Card className="group overflow-hidden">
       <CardContent className="flex items-center gap-3 p-3">
@@ -152,6 +164,9 @@ function ActivityRow({ activity, onEdit, onReload }: { activity: Activity; onEdi
           </div>
         </div>
         <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+          <Button variant="ghost" size="icon" onClick={addToGoogleCalendar} className="h-8 w-8" title="Add to Google Calendar">
+            <CalendarPlus className="h-4 w-4" />
+          </Button>
           <Button variant="ghost" size="icon" onClick={onEdit} className="h-8 w-8"><Pencil className="h-4 w-4" /></Button>
           <Button variant="ghost" size="icon" onClick={del} className="h-8 w-8 text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>
         </div>
@@ -247,12 +262,6 @@ function ActivityDialog({ open, onOpenChange, editing, onSaved }: { open: boolea
         if (error) throw error;
         savedActivity = data as Activity;
         toast.success('Activity created');
-      }
-      // Sync to Google Calendar (graceful — no error if not connected)
-      const { syncActivityToGoogle } = await import('@/lib/google-calendar');
-      const syncRes = await syncActivityToGoogle(editing ? 'update' : 'create', savedActivity);
-      if ('synced' in syncRes && syncRes.synced && syncRes.google_calendar_event_id) {
-        await supabase.from('activities').update({ google_calendar_event_id: syncRes.google_calendar_event_id }).eq('id', savedActivity.id);
       }
       onSaved();
       onOpenChange(false);
