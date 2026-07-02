@@ -3,39 +3,27 @@ import type { Journal, Activity, Profile } from '@/lib/types';
 
 export type ProfileStats = {
   journalCount: number;
-  publicJournalCount: number;
-  activityCount: number;
-  friendCount: number;
-  likesReceived: number;
-  commentsReceived: number;
+  activityCompletedCount: number;
   totalStudyMinutes: number;
-  studySessionCount: number;
+  currentStreak: number;
 };
 
 export async function fetchProfileStats(userId: string): Promise<ProfileStats> {
-  const [journals, publicJ, activities, friends, likes, comments, pomodoro] = await Promise.all([
+  const [journals, activities, pomodoro] = await Promise.all([
     supabase.from('journals').select('id', { count: 'exact', head: true }).eq('user_id', userId),
-    supabase.from('journals').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('visibility', 'public'),
-    supabase.from('activities').select('id', { count: 'exact', head: true }).eq('user_id', userId),
-    supabase.from('friends').select('id', { count: 'exact', head: true }).or(`user_id.eq.${userId},friend_id.eq.${userId}`),
-    supabase.from('journal_likes').select('id', { count: 'exact', head: true }).in('journal_id',
-      (await supabase.from('journals').select('id').eq('user_id', userId)).data?.map((j) => j.id) ?? []),
-    supabase.from('journal_comments').select('id', { count: 'exact', head: true }).in('journal_id',
-      (await supabase.from('journals').select('id').eq('user_id', userId)).data?.map((j) => j.id) ?? []),
+    supabase.from('activities').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('is_completed', true),
     supabase.from('pomodoro_sessions').select('duration_minutes').eq('user_id', userId).eq('session_type', 'work'),
   ]);
 
-  const studyMinutes = (pomodoro.data ?? []).reduce((sum, s) => sum + (s as { duration_minutes: number }).duration_minutes, 0);
+  const studyMinutes = (pomodoro.data ?? []).reduce(
+    (sum, s) => sum + (s as { duration_minutes: number }).duration_minutes, 0,
+  );
 
   return {
     journalCount: journals.count ?? 0,
-    publicJournalCount: publicJ.count ?? 0,
-    activityCount: activities.count ?? 0,
-    friendCount: friends.count ?? 0,
-    likesReceived: likes.count ?? 0,
-    commentsReceived: comments.count ?? 0,
+    activityCompletedCount: activities.count ?? 0,
     totalStudyMinutes: studyMinutes,
-    studySessionCount: pomodoro.data?.length ?? 0,
+    currentStreak: 0,
   };
 }
 

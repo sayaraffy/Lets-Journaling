@@ -145,6 +145,15 @@ export type JournalComment = {
   journal_id: string;
   user_id: string;
   body: string;
+  parent_comment_id: string | null;
+  created_at: string;
+};
+
+export type JournalShare = {
+  id: string;
+  journal_id: string;
+  user_id: string;
+  platform: string | null;
   created_at: string;
 };
 

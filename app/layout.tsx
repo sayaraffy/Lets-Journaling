@@ -22,12 +22,12 @@ const poppins = Poppins({
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://lets-journaling.netlify.app'),
-  title: "Let's Journaling — Capture Today, Understand Tomorrow",
+  title: 'Puffin — Social Journaling',
   description:
-    'A calm, private journaling platform to organize your day, build habits, reflect, and grow.',
-  applicationName: "Let's Journaling",
-  authors: [{ name: "Let's Journaling" }],
-  keywords: ['journal', 'journaling', 'productivity', 'mood', 'habits', 'reflection'],
+    'A calm social journaling platform. Capture today, understand tomorrow.',
+  applicationName: 'Puffin',
+  authors: [{ name: 'Puffin' }],
+  keywords: ['journal', 'journaling', 'social', 'productivity', 'mood', 'habits', 'reflection', 'puffin'],
   manifest: '/manifest.json',
   icons: {
     icon: [
@@ -41,22 +41,22 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: "Let's Journaling",
+    title: 'Puffin',
   },
   openGraph: {
-    title: "Let's Journaling",
-    description: 'Capture Today, Understand Tomorrow.',
+    title: 'Puffin — Social Journaling',
+    description: 'Capture today, understand tomorrow.',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: "Let's Journaling",
-    description: 'Capture Today, Understand Tomorrow.',
+    title: 'Puffin — Social Journaling',
+    description: 'Capture today, understand tomorrow.',
   },
 };
 
 export const viewport = {
-  themeColor: '#0000FF',
+  themeColor: '#0D9488',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 5,

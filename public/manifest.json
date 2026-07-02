@@ -1,14 +1,14 @@
 {
-  "name": "Let's Journaling",
-  "short_name": "Journaling",
-  "description": "Capture Today, Understand Tomorrow. A calm, private journaling platform.",
+  "name": "Puffin — Social Journaling",
+  "short_name": "Puffin",
+  "description": "A calm social journaling platform. Capture today, understand tomorrow.",
   "start_url": "/today",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#F8FAFC",
-  "theme_color": "#0000FF",
-  "categories": ["productivity", "lifestyle", "health"],
+  "theme_color": "#0D9488",
+  "categories": ["productivity", "lifestyle", "health", "social"],
   "icons": [
     {
       "src": "/icon-192.png",
@@ -49,9 +49,9 @@
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     },
     {
-      "name": "Activities",
-      "short_name": "Activities",
-      "url": "/activities",
+      "name": "Discover",
+      "short_name": "Discover",
+      "url": "/discover",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     }
   ]

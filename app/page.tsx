@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useAuth } from '@/components/providers/auth-provider';
-import { Logo } from '@/components/brand/logo';
+import { Logo, LogoMark } from '@/components/brand/logo';
 import { ThemeToggle } from '@/components/brand/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { BookHeart, CalendarCheck, Droplets, Brain, Timer, Users, Sparkles, ArrowRight } from 'lucide-react';
@@ -13,7 +13,8 @@ const features = [
   { icon: Brain, title: 'Mood & Insights', desc: 'Track your mood and discover patterns with AI-powered insights.' },
   { icon: Droplets, title: 'Water & Habits', desc: 'Build healthy habits with water tracking and checklists.' },
   { icon: Timer, title: 'Pomodoro Timer', desc: 'Stay focused with built-in focus sessions and streaks.' },
-  { icon: Users, title: 'Pen Pals', desc: 'Exchange letters with close friends, not realtime chat.' },
+  { icon: Users, title: 'Pen Pals', desc: 'Exchange messages with friends in realtime.' },
+  { icon: Sparkles, title: 'Discover', desc: 'Find meaningful writing from the community.' },
 ];
 
 export default function Home() {
@@ -21,8 +22,9 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-pulse-soft rounded-full bg-primary/20" />
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background">
+        <LogoMark className="h-12 w-12 animate-pulse-soft" />
+        <p className="font-display text-sm font-medium text-muted-foreground">Puffin</p>
       </div>
     );
   }
@@ -62,7 +64,7 @@ export default function Home() {
         <div className="mx-auto max-w-3xl text-center">
           <div className="mb-5 inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card/60 px-3 py-1 text-xs font-medium text-muted-foreground backdrop-blur">
             <Sparkles className="h-3.5 w-3.5 text-gold-400" />
-            Capture Today, Understand Tomorrow
+            Capture today, understand tomorrow
           </div>
           <h1 className="font-display text-4xl font-semibold tracking-tight text-balance sm:text-6xl">
             A calm space to{' '}
@@ -72,8 +74,7 @@ export default function Home() {
             , one day at a time.
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-base text-muted-foreground text-balance sm:text-lg">
-            Organize activities, build habits, reflect on your days, and grow — all in a private,
-            beautiful journal built for everyday use.
+            Write, reflect, and connect. Discover meaningful writing from a community that values depth over noise.
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Button asChild size="lg" className="w-full sm:w-auto gap-2">

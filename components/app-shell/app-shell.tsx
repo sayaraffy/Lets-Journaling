@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/auth-provider';
+import { Logo, LogoMark } from '@/components/brand/logo';
 import { Sidebar } from '@/components/app-shell/sidebar';
 import { Header } from '@/components/app-shell/header';
 
@@ -18,8 +19,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (loading || !user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-pulse-soft rounded-full bg-primary/20" />
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background">
+        <LogoMark className="h-12 w-12 animate-pulse-soft" />
+        <p className="font-display text-sm font-medium text-muted-foreground">Puffin</p>
       </div>
     );
   }

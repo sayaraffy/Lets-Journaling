@@ -1,4 +1,4 @@
-const CACHE = 'lets-journaling-v1';
+const CACHE = 'puffin-v2';
 const PRECACHE = ['/', '/today', '/manifest.json', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (event) => {
