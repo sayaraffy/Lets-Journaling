@@ -1,233 +1,155 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import Link from 'next/link';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/components/providers/auth-provider';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import type { Profile, FriendRequest, Friend } from '@/lib/types';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
+import { Users, Search, UserPlus, Check, X, Mail } from 'lucide-react';
+import Link from 'next/link';
 import { toast } from 'sonner';
-import { Search, UserPlus, Check, X, PenTool, Users, Trash2 } from 'lucide-react';
-import type { Profile, Friend, FriendRequest } from '@/lib/types';
+
+type FriendWithProfile = Friend & { friend_profile: Profile };
 
 export default function FriendsPage() {
   const { user } = useAuth();
-  console.log('Current user id:', user?.id);
-  const [friends, setFriends] = useState<(Friend & { friend: Profile })[]>([]);
+  const [friends, setFriends] = useState<FriendWithProfile[]>([]);
   const [requests, setRequests] = useState<(FriendRequest & { sender: Profile })[]>([]);
-  const [search, setSearch] = useState('');
-  const [results, setResults] = useState<Profile[]>([]);
+  const [sentRequests, setSentRequests] = useState<(FriendRequest & { receiver: Profile })[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searching, setSearching] = useState(false);
 
   const load = useCallback(async () => {
     if (!user) return;
     setLoading(true);
-    const [fRes, rRes] = await Promise.all([
-      supabase.from('friends')
-    .select('*, friend:profiles!friends_friend_id_fkey(*)')
-    .eq('user_id', user.id),
 
-  supabase.from('friend_requests')
-    .select('*, sender:profiles!friend_requests_sender_id_fkey(*)')
-    .eq('receiver_id', user.id)
-    .eq('status', 'pending'),
+    const [friendsRes, reqReceived, reqSent] = await Promise.all([
+      supabase.from('friends').select('*, friend_profile:profiles!friends_friend_id_fkey(*)').eq('user_id', user.id),
+      supabase.from('friend_requests').select('*, sender:profiles!friend_requests_sender_id_fkey(*)').eq('receiver_id', user.id).eq('status', 'pending'),
+      supabase.from('friend_requests').select('*, receiver:profiles!friend_requests_receiver_id_fkey(*)').eq('sender_id', user.id).eq('status', 'pending'),
     ]);
-    console.log('Friend Requests Response:', rRes);
-    console.log('Friend Requests Data:', rRes.data);
-    console.log('Friend Requests Error:', rRes.error);
-    console.log('Friends Response:', fRes);
-console.log('Friends Data:', fRes.data);
-console.log('Friends Error:', fRes.error);
-    
-    setFriends((fRes.data as any) ?? []);
-    setRequests((rRes.data as any) ?? []);
+
+    const reverse = await supabase.from('friends').select('*, friend_profile:profiles!friends_user_id_fkey(*)').eq('friend_id', user.id);
+    const allFriends = [
+      ...((friendsRes.data as FriendWithProfile[]) ?? []),
+      ...(((reverse.data ?? []) as FriendWithProfile[]).map((f) => ({ ...f, friend_profile: (f as unknown as { friend_profile: Profile }).friend_profile }))),
+    ];
+
+    setFriends(allFriends);
+    setRequests((reqReceived.data as (FriendRequest & { sender: Profile })[]) ?? []);
+    setSentRequests((reqSent.data as (FriendRequest & { receiver: Profile })[]) ?? []);
     setLoading(false);
   }, [user]);
 
   useEffect(() => { load(); }, [load]);
 
-  const doSearch = async () => {
-    if (!search.trim() || !user) return;
+  const handleSearch = async () => {
+    if (!searchQuery.trim() || !user) return;
+    setSearching(true);
     const { data } = await supabase
       .from('profiles')
       .select('*')
-      .ilike('username', `%${search.trim()}%`)
+      .or(`username.ilike.%${searchQuery.trim()}%,full_name.ilike.%${searchQuery.trim()}%`)
       .neq('id', user.id)
       .limit(10);
-    setResults((data as Profile[]) ?? []);
+    setSearchResults((data as Profile[]) ?? []);
+    setSearching(false);
   };
 
   const sendRequest = async (receiverId: string) => {
     if (!user) return;
-    try {
-      // Check if already friends
-      const { data: existingFriend } = await supabase.from('friends')
-        .select('id').eq('user_id', user.id).eq('friend_id', receiverId).maybeSingle();
-      if (existingFriend) {
-        toast.info('You are already friends');
-        setResults(results.filter((r) => r.id !== receiverId));
-        return;
-      }
-      // Check for existing pending request (either direction)
-      const { data: existingReq } = await supabase.from('friend_requests')
-        .select('id, sender_id, status')
-        .or(`and(sender_id.eq.${user.id},receiver_id.eq.${receiverId}),and(sender_id.eq.${receiverId},receiver_id.eq.${user.id})`)
-        .eq('status', 'pending')
-        .maybeSingle();
-      if (existingReq) {
-        if (existingReq.sender_id === receiverId) {
-          toast.info('They already sent you a request — check your requests tab');
-        } else {
-          toast.info('Friend request already sent');
-        }
-        setResults(results.filter((r) => r.id !== receiverId));
-        return;
-      }
-      const { error } = await supabase.from('friend_requests').insert({ sender_id: user.id, receiver_id: receiverId });
-      if (error) throw error;
-      toast.success('Friend request sent');
-      setResults(results.filter((r) => r.id !== receiverId));
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to send request');
-    }
+    await supabase.from('friend_requests').insert({ sender_id: user.id, receiver_id: receiverId });
+    toast.success('Friend request sent');
+    load();
   };
 
-  const acceptRequest = async (req: FriendRequest) => {
-  try {
-    const { error: requestError } = await supabase
-      .from('friend_requests')
-      .update({ status: 'accepted' })
-      .eq('id', req.id);
-
-    if (requestError) throw requestError;
-
-    const { data, error: friendError } = await supabase
-      .from('friends')
-      .insert([
-        {
-          user_id: req.sender_id,
-          friend_id: req.receiver_id,
-        },
-        {
-          user_id: req.receiver_id,
-          friend_id: req.sender_id,
-        },
-      ])
-      .select();
-
-    console.log('Inserted friends:', data);
-    console.log('Friend insert error:', friendError);
-
-    if (friendError) throw friendError;
-
+  const acceptRequest = async (reqId: string, senderId: string) => {
+    if (!user) return;
+    await supabase.from('friend_requests').update({ status: 'accepted' }).eq('id', reqId);
+    await supabase.from('friends').insert({ user_id: user.id, friend_id: senderId });
+    await supabase.from('notifications').insert({
+      user_id: senderId, type: 'friend_accepted', title: 'Friend request accepted',
+      body: 'You are now friends', data: { friend_id: user.id },
+    });
     toast.success('Friend added');
     load();
-  } catch (err) {
-    console.error(err);
-    toast.error(
-      err instanceof Error ? err.message : 'Failed to accept request'
-    );
-  }
-};
-
-  const rejectRequest = async (id: string) => {
-    await supabase.from('friend_requests').update({ status: 'rejected' }).eq('id', id);
-    setRequests(requests.filter((r) => r.id !== id));
   };
 
-  const removeFriend = async (f: Friend) => {
-    if (!user) return;
-    try {
-      await Promise.all([
-        supabase.from('friends').delete().eq('user_id', f.user_id).eq('friend_id', f.friend_id),
-        supabase.from('friends').delete().eq('user_id', f.friend_id).eq('friend_id', f.user_id),
-      ]);
-      load();
-      toast.success('Friend removed');
-    } catch {
-      toast.error('Failed to remove friend');
-    }
+  const rejectRequest = async (reqId: string) => {
+    await supabase.from('friend_requests').update({ status: 'rejected' }).eq('id', reqId);
+    load();
+  };
+
+  const removeFriend = async (friendId: string) => {
+    if (!user || !confirm('Remove this friend?')) return;
+    await supabase.from('friends').delete().or(`user_id.eq.${user.id},friend_id.eq.${user.id}`).eq('friend_id', friendId);
+    await supabase.from('friends').delete().eq('user_id', friendId).eq('friend_id', user.id);
+    toast.success('Friend removed');
+    load();
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6">
+      <div>
+        <h1 className="flex items-center gap-2 font-display text-2xl font-semibold tracking-tight">
+          <Users className="h-6 w-6 text-primary" /> Friends
+        </h1>
+        <p className="text-sm text-muted-foreground">Connect with people to share journals and exchange letters.</p>
+      </div>
+
       <Tabs defaultValue="friends">
         <TabsList>
-          <TabsTrigger value="friends" className="gap-1.5"><Users className="h-4 w-4" /> Friends</TabsTrigger>
-          <TabsTrigger value="requests" className="gap-1.5">
+          <TabsTrigger value="friends" className="gap-2"><Users className="h-4 w-4" /> Friends ({friends.length})</TabsTrigger>
+          <TabsTrigger value="requests" className="gap-2">
             <UserPlus className="h-4 w-4" /> Requests
-            {requests.length > 0 && <span className="ml-1 rounded-full bg-primary px-1.5 text-xs text-primary-foreground">{requests.length}</span>}
+            {requests.length > 0 && <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">{requests.length}</span>}
           </TabsTrigger>
-          <TabsTrigger value="search" className="gap-1.5"><Search className="h-4 w-4" /> Find</TabsTrigger>
+          <TabsTrigger value="find" className="gap-2"><Search className="h-4 w-4" /> Find</TabsTrigger>
         </TabsList>
 
+        {/* Friends list */}
         <TabsContent value="friends" className="mt-4">
           {loading ? (
-            <div className="space-y-2">{[1, 2, 3].map((i) => <div key={i} className="h-16 animate-pulse-soft rounded-xl bg-muted" />)}</div>
+            <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="h-16 animate-pulse rounded-xl bg-muted" />)}</div>
           ) : friends.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
-                <Users className="h-10 w-10 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">No friends yet. Search for users to connect.</p>
-                <Button onClick={() => { const el = document.querySelector('[value="search"]') as HTMLButtonElement; el?.click(); }} className="gap-2"><Search className="h-4 w-4" /> Find friends</Button>
-              </CardContent>
-            </Card>
+            <Card><CardContent className="flex flex-col items-center py-12 text-center">
+              <Users className="mb-2 h-8 w-8 text-muted-foreground/50" />
+              <p className="text-sm text-muted-foreground">No friends yet. Use the Find tab to search for people.</p>
+            </CardContent></Card>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
               {friends.map((f) => (
-                <Card key={f.id} className="cursor-pointer transition-shadow hover:shadow-md">
+                <Card key={f.id}>
                   <CardContent className="flex items-center gap-3 p-4">
-                    <Link href={`/profile/${f.friend?.username ?? ''}`} className="flex items-center gap-3 min-w-0 flex-1">
-                      <Avatar className="h-11 w-11">
-                        {f.friend?.avatar_url ? <img src={f.friend.avatar_url} alt="" className="h-full w-full object-cover" /> : null}
-                        <AvatarFallback className="bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
-                          {(f.friend?.username ?? '?').charAt(0).toUpperCase()}
+                    <Link href={`/profile/${f.friend_profile?.username ?? ''}`}>
+                      <Avatar className="h-12 w-12">
+                        {f.friend_profile?.avatar_url && <AvatarImage src={f.friend_profile.avatar_url} alt={f.friend_profile.username ?? ''} />}
+                        <AvatarFallback className="bg-primary/10 font-semibold text-primary">
+                          {(f.friend_profile?.username ?? '?').charAt(0).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate font-medium hover:underline">{f.friend?.username ?? 'User'}</p>
-                        {f.friend?.bio && <p className="truncate text-xs text-muted-foreground">{f.friend.bio}</p>}
-                      </div>
                     </Link>
-                    <div className="flex gap-1">
-                      <Button asChild variant="ghost" size="icon" className="h-8 w-8"><Link href={`/pen-pal?to=${f.friend_id}`}><PenTool className="h-4 w-4" /></Link></Button>
-                      <Button variant="ghost" size="icon" onClick={() => removeFriend(f)} className="h-8 w-8 text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="requests" className="mt-4">
-          {requests.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
-                <UserPlus className="h-10 w-10 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">No pending requests.</p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="space-y-2">
-              {requests.map((r) => (
-                <Card key={r.id}>
-                  <CardContent className="flex items-center gap-3 p-4">
-                    <Avatar className="h-11 w-11">
-                      {r.sender?.avatar_url ? <img src={r.sender.avatar_url} alt="" className="h-full w-full object-cover" /> : null}
-                      <AvatarFallback className="bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
-                        {(r.sender?.username ?? '?').charAt(0).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-medium">{r.sender?.username ?? 'User'}</p>
-                      <p className="text-xs text-muted-foreground">wants to be your friend</p>
+                      <Link href={`/profile/${f.friend_profile?.username ?? ''}`} className="block truncate text-sm font-medium hover:underline">
+                        {f.friend_profile?.full_name ?? f.friend_profile?.username}
+                      </Link>
+                      <p className="truncate text-xs text-muted-foreground">@{f.friend_profile?.username}</p>
                     </div>
-                    <Button size="sm" onClick={() => acceptRequest(r)} className="gap-1.5 h-8"><Check className="h-4 w-4" /> Accept</Button>
-                    <Button size="sm" variant="outline" onClick={() => rejectRequest(r.id)} className="h-8 w-8 p-0"><X className="h-4 w-4" /></Button>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="icon" asChild className="h-8 w-8">
+                        <Link href={`/pen-pal?to=${f.friend_profile?.id}`}><Mail className="h-4 w-4" /></Link>
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => removeFriend(f.friend_id)} className="h-8 w-8 text-destructive hover:text-destructive">
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               ))}
@@ -235,35 +157,99 @@ console.log('Friends Error:', fRes.error);
           )}
         </TabsContent>
 
-        <TabsContent value="search" className="mt-4 space-y-3">
-          <div className="flex gap-2">
-            <Input placeholder="Search by username…" value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && doSearch()} />
-            <Button onClick={doSearch} className="gap-2"><Search className="h-4 w-4" /> Search</Button>
-          </div>
-          {results.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">Search for users by username to send a friend request.</p>
+        {/* Requests */}
+        <TabsContent value="requests" className="mt-4 space-y-3">
+          {requests.length === 0 && sentRequests.length === 0 ? (
+            <Card><CardContent className="py-12 text-center text-sm text-muted-foreground">No pending requests.</CardContent></Card>
           ) : (
+            <>
+              {requests.length > 0 && (
+                <div>
+                  <h3 className="mb-2 text-sm font-semibold text-muted-foreground">Incoming ({requests.length})</h3>
+                  <div className="space-y-2">
+                    {requests.map((r) => (
+                      <Card key={r.id}>
+                        <CardContent className="flex items-center gap-3 p-3">
+                          <Avatar className="h-10 w-10">
+                            {r.sender?.avatar_url && <AvatarImage src={r.sender.avatar_url} alt="" />}
+                            <AvatarFallback className="bg-muted">{(r.sender?.username ?? '?').charAt(0).toUpperCase()}</AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium">{r.sender?.full_name ?? r.sender?.username}</p>
+                            <p className="truncate text-xs text-muted-foreground">@{r.sender?.username}</p>
+                          </div>
+                          <Button size="sm" onClick={() => acceptRequest(r.id, r.sender_id)} className="gap-1"><Check className="h-4 w-4" /> Accept</Button>
+                          <Button size="sm" variant="ghost" onClick={() => rejectRequest(r.id)}><X className="h-4 w-4" /></Button>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {sentRequests.length > 0 && (
+                <div>
+                  <h3 className="mb-2 text-sm font-semibold text-muted-foreground">Sent ({sentRequests.length})</h3>
+                  <div className="space-y-2">
+                    {sentRequests.map((r) => (
+                      <Card key={r.id}>
+                        <CardContent className="flex items-center gap-3 p-3">
+                          <Avatar className="h-10 w-10">
+                            {r.receiver?.avatar_url && <AvatarImage src={r.receiver.avatar_url} alt="" />}
+                            <AvatarFallback className="bg-muted">{(r.receiver?.username ?? '?').charAt(0).toUpperCase()}</AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium">{r.receiver?.full_name ?? r.receiver?.username}</p>
+                            <p className="truncate text-xs text-muted-foreground">@{r.receiver?.username}</p>
+                          </div>
+                          <Badge variant="outline">Pending</Badge>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </TabsContent>
+
+        {/* Find */}
+        <TabsContent value="find" className="mt-4 space-y-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search by username or name…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
+              className="pl-9"
+            />
+          </div>
+          {searching && <p className="text-sm text-muted-foreground">Searching…</p>}
+          {searchResults.length > 0 && (
             <div className="space-y-2">
-              {results.map((p) => (
-                <Card key={p.id} className="cursor-pointer transition-shadow hover:shadow-md">
-                  <CardContent className="flex items-center gap-3 p-4">
-                    <Link href={`/profile/${p.username ?? ''}`} className="flex items-center gap-3 min-w-0 flex-1">
-                      <Avatar className="h-11 w-11">
-                        {p.avatar_url ? <img src={p.avatar_url} alt="" className="h-full w-full object-cover" /> : null}
-                        <AvatarFallback className="bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
-                          {(p.username ?? '?').charAt(0).toUpperCase()}
-                        </AvatarFallback>
+              {searchResults.map((p) => (
+                <Card key={p.id}>
+                  <CardContent className="flex items-center gap-3 p-3">
+                    <Link href={`/profile/${p.username ?? ''}`}>
+                      <Avatar className="h-10 w-10">
+                        {p.avatar_url && <AvatarImage src={p.avatar_url} alt="" />}
+                        <AvatarFallback className="bg-muted">{(p.username ?? '?').charAt(0).toUpperCase()}</AvatarFallback>
                       </Avatar>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate font-medium hover:underline">{p.username ?? 'User'}</p>
-                        {p.bio && <p className="truncate text-xs text-muted-foreground">{p.bio}</p>}
-                      </div>
                     </Link>
-                    <Button size="sm" onClick={() => sendRequest(p.id)} className="gap-1.5 h-8"><UserPlus className="h-4 w-4" /> Add</Button>
+                    <div className="min-w-0 flex-1">
+                      <Link href={`/profile/${p.username ?? ''}`} className="block truncate text-sm font-medium hover:underline">
+                        {p.full_name ?? p.username}
+                      </Link>
+                      <p className="truncate text-xs text-muted-foreground">@{p.username}</p>
+                    </div>
+                    <Button size="sm" onClick={() => sendRequest(p.id)} className="gap-1"><UserPlus className="h-4 w-4" /> Add</Button>
                   </CardContent>
                 </Card>
               ))}
             </div>
+          )}
+          {!searching && searchResults.length === 0 && searchQuery && (
+            <p className="text-sm text-muted-foreground">No results found.</p>
           )}
         </TabsContent>
       </Tabs>

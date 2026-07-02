@@ -1,282 +1,186 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
+import { useState, useEffect } from 'react';
+import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/components/providers/auth-provider';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
+import type { Journal, Activity, Profile } from '@/lib/types';
+import { fetchProfileStats, fetchUserJournals, fetchUserActivities, type ProfileStats } from '@/lib/profile-data';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { BookOpen, Activity as ActivityIcon, Info, MapPin, Calendar, Flame, Heart, MessageCircle, Timer, Users, Globe, Lock, Bookmark } from 'lucide-react';
+import { formatDate, relativeTime, readingTime, combineJournalText } from '@/lib/journal-utils';
+import { renderMarkdown } from '@/lib/markdown';
+import { cn } from '@/lib/utils';
+import Link from 'next/link';
 import { toast } from 'sonner';
-import {
-  Flame, Calendar, Heart, MessageCircle, PenTool, UserPlus, UserMinus,
-  Share2, BookHeart, Trophy, Users, Sparkles, TrendingUp, Award, Droplets, CheckCircle2,
-} from 'lucide-react';
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import type { Profile, Journal, Friend, JournalLike, MoodEntry } from '@/lib/types';
 
-type ProfileJournal = Journal & { profiles: Profile };
-
-export default function UserProfilePage() {
-  const params = useParams();
-  const router = useRouter();
-  const { user } = useAuth();
-  const username = params.username as string;
-
+export default function ProfilePage() {
+  const { username } = useParams<{ username: string }>();
+  const { user: currentUser, profile: myProfile } = useAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [stats, setStats] = useState<ProfileStats | null>(null);
+  const [journals, setJournals] = useState<Journal[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
   const [isFriend, setIsFriend] = useState(false);
-  const [pendingSent, setPendingSent] = useState(false);
-  const [journals, setJournals] = useState<ProfileJournal[]>([]);
-  const [friends, setFriends] = useState<(Friend & { friend: Profile })[]>([]);
-  const [moodData, setMoodData] = useState<MoodEntry[]>([]);
-  const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
-  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
-  const [stats, setStats] = useState({ totalJournals: 0, totalActivities: 0, avgMood: 0, monthlyCount: [] as { month: string; count: number }[] });
-  const [actionLoading, setActionLoading] = useState(false);
+  const [friendReqSent, setFriendReqSent] = useState(false);
 
-  const load = useCallback(async () => {
-    if (!username) return;
-    setLoading(true);
-    const { data: prof, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('username', username)
-      .maybeSingle();
-    if (error || !prof) {
-      setProfile(null);
-      setLoading(false);
-      return;
-    }
-    setProfile(prof as Profile);
-
-    const isOwn = user?.id === prof.id;
-    if (user && !isOwn) {
-      const [fRes, frRes] = await Promise.all([
-        supabase.from('friends').select('id').eq('user_id', user.id).eq('friend_id', prof.id).maybeSingle(),
-        supabase.from('friend_requests').select('id').eq('sender_id', user.id).eq('receiver_id', prof.id).eq('status', 'pending').maybeSingle(),
-      ]);
-      setIsFriend(!!fRes.data);
-      setPendingSent(!!frRes.data);
-    }
-
-    const [jRes, fRes, mRes, aRes] = await Promise.all([
-      supabase.from('journals').select('*, profiles!journals_user_id_fkey(*)').eq('user_id', prof.id).eq('visibility', 'public').order('created_at', { ascending: false }),
-      supabase.from('friends').select('*, friend:profiles!friends_friend_id_fkey(*)').eq('user_id', prof.id).limit(20),
-      supabase.from('mood_entries').select('*').eq('user_id', prof.id).order('mood_date', { ascending: true }).limit(30),
-      supabase.from('activities').select('id', { count: 'exact', head: true }).eq('user_id', prof.id).eq('is_completed', true),
-    ]);
-    const jData = (jRes.data as ProfileJournal[]) ?? [];
-    setJournals(jData);
-    setFriends((fRes.data as (Friend & { friend: Profile })[]) ?? []);
-    setMoodData((mRes.data as MoodEntry[]) ?? []);
-
-    if (jData.length > 0) {
-      const ids = jData.map((j) => j.id);
-      const [lRes, cRes] = await Promise.all([
-        supabase.from('journal_likes').select('journal_id').in('journal_id', ids),
-        supabase.from('journal_comments').select('journal_id').in('journal_id', ids),
-      ]);
-      const lc: Record<string, number> = {};
-      (lRes.data as JournalLike[] | null)?.forEach((l) => { lc[l.journal_id] = (lc[l.journal_id] ?? 0) + 1; });
-      setLikeCounts(lc);
-      const cc: Record<string, number> = {};
-      (cRes.data as { journal_id: string }[] | null)?.forEach((c) => { cc[c.journal_id] = (cc[c.journal_id] ?? 0) + 1; });
-      setCommentCounts(cc);
-    }
-
-    const avgMood = mRes.data && mRes.data.length > 0
-      ? mRes.data.reduce((sum, m) => sum + (m as MoodEntry).mood, 0) / mRes.data.length
-      : 0;
-
-    const monthly: Record<string, number> = {};
-    jData.forEach((j) => {
-      const m = j.journal_date.slice(0, 7);
-      monthly[m] = (monthly[m] ?? 0) + 1;
-    });
-    const monthlyArr = Object.entries(monthly).slice(-6).map(([month, count]) => ({ month, count }));
-
-    setStats({
-      totalJournals: jData.length,
-      totalActivities: aRes.count ?? 0,
-      avgMood: Math.round(avgMood * 10) / 10,
-      monthlyCount: monthlyArr,
-    });
-
-    setLoading(false);
-  }, [username, user]);
-
-  useEffect(() => { load(); }, [load]);
-
-  // Realtime: refetch when this user's journals, likes, or comments change
   useEffect(() => {
-    if (!profile) return;
-    const channel = supabase
-      .channel(`user-profile-${profile.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'journals', filter: `user_id=eq.${profile.id}` }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'journal_likes' }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'journal_comments' }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'friends', filter: `user_id=eq.${profile.id}` }, () => load())
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [profile, load]);
-
-  const sendRequest = async () => {
-    if (!user || !profile) return;
-    setActionLoading(true);
-    try {
-      const { error } = await supabase.from('friend_requests').insert({ sender_id: user.id, receiver_id: profile.id });
-      if (error) throw error;
-      setPendingSent(true);
-      toast.success('Friend request sent');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to send request');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const removeFriend = async () => {
-    if (!user || !profile) return;
-    setActionLoading(true);
-    try {
-      await Promise.all([
-        supabase.from('friends').delete().eq('user_id', user.id).eq('friend_id', profile.id),
-        supabase.from('friends').delete().eq('user_id', profile.id).eq('friend_id', user.id),
+    (async () => {
+      const { data: p } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('username', username)
+        .maybeSingle();
+      if (!p) { setLoading(false); return; }
+      setProfile(p as Profile);
+      const [s, j, a] = await Promise.all([
+        fetchProfileStats(p.id),
+        fetchUserJournals(p.id, 'public'),
+        fetchUserActivities(p.id),
       ]);
-      setIsFriend(false);
-      toast.success('Friend removed');
-    } catch {
-      toast.error('Failed to remove friend');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const shareProfile = async () => {
-    const url = `${window.location.origin}/profile/${username}`;
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: `${username}'s profile`, url });
-      } else {
-        await navigator.clipboard.writeText(url);
-        toast.success('Profile link copied');
+      setStats(s);
+      setJournals(j);
+      setActivities(a);
+      if (currentUser && currentUser.id !== p.id) {
+        const [friends, reqs] = await Promise.all([
+          supabase.from('friends').select('user_id, friend_id').or(`user_id.eq.${currentUser.id},friend_id.eq.${currentUser.id}`).limit(1),
+          supabase.from('friend_requests').select('id').eq('sender_id', currentUser.id).eq('receiver_id', p.id).eq('status', 'pending').maybeSingle(),
+        ]);
+        const f = (friends.data ?? []) as { user_id: string; friend_id: string }[];
+        const isFriendRow = f.some((row) => row.user_id === p.id || row.friend_id === p.id);
+        setIsFriend(isFriendRow);
+        setFriendReqSent(!!reqs.data);
       }
-    } catch {
-      // cancelled
-    }
+      setLoading(false);
+    })();
+  }, [username, currentUser]);
+
+  const sendFriendRequest = async () => {
+    if (!currentUser || !profile) return;
+    await supabase.from('friend_requests').insert({ sender_id: currentUser.id, receiver_id: profile.id });
+    setFriendReqSent(true);
+    toast.success('Friend request sent');
   };
 
   if (loading) {
-    return (
-      <div className="space-y-4 animate-fade-in">
-        <Skeleton className="h-48 rounded-2xl" />
-        <Skeleton className="h-10 w-64" />
-        <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-32 rounded-xl" />)}</div>
-      </div>
-    );
+    return <div className="h-96 animate-pulse rounded-2xl bg-muted" />;
   }
 
   if (!profile) {
     return (
       <Card>
-        <CardContent className="flex flex-col items-center gap-3 py-16 text-center">
-          <Users className="h-12 w-12 text-muted-foreground" />
+        <CardContent className="flex flex-col items-center py-16 text-center">
           <p className="font-medium">User not found</p>
-          <Button variant="outline" onClick={() => router.back()}>Go back</Button>
+          <Button asChild className="mt-4"><Link href="/discover">Discover writers</Link></Button>
         </CardContent>
       </Card>
     );
   }
 
-  const isOwn = user?.id === profile.id;
-  const moodChart = moodData.slice(-14).map((m) => ({ date: m.mood_date.slice(5), mood: m.mood }));
+  const isOwn = currentUser?.id === profile.id;
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <Card className="overflow-hidden">
-        <div className="h-28 bg-gradient-to-r from-brand-400 to-brand-600 dark:from-brand-700 dark:to-brand-900">
-          {profile.cover_url && <img src={profile.cover_url} alt="" className="h-full w-full object-cover" />}
+    <div className="space-y-6">
+      {/* Cover + header */}
+      <div className="overflow-hidden rounded-2xl border border-border bg-card">
+        <div className="relative h-40 bg-gradient-to-br from-brand-400 to-brand-600 sm:h-48">
+          {profile.cover_url && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={profile.cover_url} alt="Cover" className="h-full w-full object-cover" />
+          )}
         </div>
-        <CardContent className="p-6">
-          <div className="-mt-16 flex flex-col gap-4 sm:flex-row sm:items-end">
-            <Avatar className="h-24 w-24 border-4 border-card shadow-soft">
-              {profile.avatar_url ? <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" /> : null}
-              <AvatarFallback className="bg-brand-100 text-2xl font-semibold text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
-                {(profile.username ?? '?').charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1 pb-1">
-              <h1 className="font-display text-2xl font-semibold">{profile.username ?? 'User'}</h1>
-              {profile.full_name && <p className="text-sm text-muted-foreground">{profile.full_name}</p>}
-              {profile.bio && <p className="mt-1 text-sm text-foreground/80">{profile.bio}</p>}
-              <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Calendar className="h-3.5 w-3.5" />
-                Joined {new Date(profile.join_date).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
-              </p>
+        <div className="px-4 pb-6 sm:px-6">
+          <div className="-mt-12 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-end">
+              <Avatar className="h-24 w-24 border-4 border-card shadow-soft">
+                {profile.avatar_url && <AvatarImage src={profile.avatar_url} alt={profile.username ?? ''} />}
+                <AvatarFallback className="bg-primary/10 text-2xl font-semibold text-primary">
+                  {(profile.username ?? profile.full_name ?? '?').charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="pb-1">
+                <h1 className="font-display text-xl font-semibold tracking-tight sm:text-2xl">
+                  {profile.full_name ?? profile.username}
+                </h1>
+                <p className="text-sm text-muted-foreground">@{profile.username}</p>
+              </div>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex gap-2">
               {isOwn ? (
-                <Button asChild variant="outline" className="gap-2">
-                  <Link href="/profile"><PenTool className="h-4 w-4" /> Edit Profile</Link>
+                <Button asChild variant="outline" size="sm">
+                  <Link href="/profile/edit">Edit profile</Link>
                 </Button>
               ) : isFriend ? (
-                <>
-                  <Button asChild variant="outline" className="gap-2"><Link href={`/pen-pal?to=${profile.id}`}><PenTool className="h-4 w-4" /> Message</Link></Button>
-                  <Button variant="outline" onClick={removeFriend} disabled={actionLoading} className="gap-2"><UserMinus className="h-4 w-4" /> Remove</Button>
-                </>
-              ) : pendingSent ? (
-                <Button variant="outline" disabled className="gap-2"><CheckCircle2 className="h-4 w-4" /> Request sent</Button>
+                <Badge variant="secondary" className="gap-1.5"><Users className="h-3.5 w-3.5" /> Friends</Badge>
+              ) : friendReqSent ? (
+                <Button variant="outline" size="sm" disabled>Request sent</Button>
               ) : (
-                <Button onClick={sendRequest} disabled={actionLoading} className="gap-2"><UserPlus className="h-4 w-4" /> Add Friend</Button>
+                <Button onClick={sendFriendRequest} size="sm" className="gap-2">
+                  <Users className="h-4 w-4" /> Add friend
+                </Button>
               )}
-              <Button variant="ghost" size="icon" onClick={shareProfile}><Share2 className="h-4 w-4" /></Button>
             </div>
           </div>
 
-          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Stat icon={Flame} label="Streak" value={`${profile.streak}d`} color="text-gold-500" />
-            <Stat icon={BookHeart} label="Journals" value={`${stats.totalJournals}`} color="text-brand-600" />
-            <Stat icon={CheckCircle2} label="Activities" value={`${stats.totalActivities}`} color="text-success" />
-            <Stat icon={TrendingUp} label="Avg Mood" value={stats.avgMood > 0 ? `${stats.avgMood}/5` : '—'} color="text-purple-500" />
-          </div>
-        </CardContent>
-      </Card>
+          {profile.bio && <p className="mt-4 max-w-2xl text-sm text-foreground">{profile.bio}</p>}
 
+          <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+            {profile.bio && (
+              <span className="flex items-center gap-1.5"><Info className="h-4 w-4" /> {profile.bio}</span>
+            )}
+            <span className="flex items-center gap-1.5"><Calendar className="h-4 w-4" /> Joined {formatDate(profile.join_date)}</span>
+            {profile.streak > 0 && (
+              <span className="flex items-center gap-1.5 text-gold-600 dark:text-gold-300"><Flame className="h-4 w-4" /> {profile.streak} day streak</span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Stats grid */}
+      {stats && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <StatTile icon={BookOpen} label="Journals" value={stats.journalCount} />
+          <StatTile icon={Globe} label="Public" value={stats.publicJournalCount} />
+          <StatTile icon={ActivityIcon} label="Activities" value={stats.activityCount} />
+          <StatTile icon={Users} label="Friends" value={stats.friendCount} />
+          <StatTile icon={Heart} label="Likes" value={stats.likesReceived} />
+          <StatTile icon={MessageCircle} label="Comments" value={stats.commentsReceived} />
+        </div>
+      )}
+
+      {/* Tabs */}
       <Tabs defaultValue="journals">
-        <TabsList className="w-full justify-start overflow-x-auto">
-          <TabsTrigger value="journals" className="gap-1.5"><BookHeart className="h-4 w-4" /> Journals</TabsTrigger>
-          <TabsTrigger value="stats" className="gap-1.5"><TrendingUp className="h-4 w-4" /> Statistics</TabsTrigger>
-          <TabsTrigger value="achievements" className="gap-1.5"><Trophy className="h-4 w-4" /> Achievements</TabsTrigger>
-          <TabsTrigger value="friends" className="gap-1.5"><Users className="h-4 w-4" /> Friends</TabsTrigger>
+        <TabsList>
+          <TabsTrigger value="journals" className="gap-2"><BookOpen className="h-4 w-4" /> Journals</TabsTrigger>
+          <TabsTrigger value="activities" className="gap-2"><ActivityIcon className="h-4 w-4" /> Activities</TabsTrigger>
+          <TabsTrigger value="about" className="gap-2"><Info className="h-4 w-4" /> About</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="journals" className="mt-4 space-y-3">
+        <TabsContent value="journals" className="mt-4 space-y-4">
           {journals.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
-                <BookHeart className="h-10 w-10 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">No public journals yet.</p>
-              </CardContent>
-            </Card>
+            <Card><CardContent className="py-12 text-center text-sm text-muted-foreground">No public journals yet.</CardContent></Card>
           ) : (
             journals.map((j) => (
               <Link key={j.id} href={`/journal/${j.id}`}>
-                <Card className="cursor-pointer transition-shadow hover:shadow-md">
-                  <CardContent className="p-4">
-                    <div className="mb-2 flex items-center justify-between">
-                      <Badge variant="secondary" className="text-xs">{new Date(j.journal_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</Badge>
-                      <span className="text-xs text-muted-foreground">{j.tags?.slice(0, 2).map((t) => `#${t}`).join(' ')}</span>
-                    </div>
-                    {j.what_happened && <p className="line-clamp-2 text-sm text-foreground/90">{j.what_happened}</p>}
-                    {j.free_notes && <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{j.free_notes}</p>}
-                    <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1"><Heart className="h-3.5 w-3.5" /> {likeCounts[j.id] ?? 0}</span>
-                      <span className="flex items-center gap-1"><MessageCircle className="h-3.5 w-3.5" /> {commentCounts[j.id] ?? 0}</span>
+                <Card className="group transition-all hover:shadow-soft-lg">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">{formatDate(j.journal_date)}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div
+                      className="prose-journal line-clamp-3 text-sm text-muted-foreground"
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(combineJournalText(j).slice(0, 280)) }}
+                    />
+                    <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
+                      <span>{readingTime(combineJournalText(j))} min read</span>
+                      {j.tags?.filter((t) => t !== 'pinned' && t !== 'archived').map((t) => (
+                        <Badge key={t} variant="outline" className="text-xs">#{t}</Badge>
+                      ))}
                     </div>
                   </CardContent>
                 </Card>
@@ -285,143 +189,64 @@ export default function UserProfilePage() {
           )}
         </TabsContent>
 
-        <TabsContent value="stats" className="mt-4 space-y-4">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <StatCard icon={Flame} label="Current Streak" value={`${profile.streak} days`} color="text-gold-500" />
-            <StatCard icon={Flame} label="Longest Streak" value={`${profile.longest_streak} days`} color="text-gold-500" />
-            <StatCard icon={BookHeart} label="Total Journals" value={`${stats.totalJournals}`} color="text-brand-600" />
-          </div>
-          {moodChart.length > 0 && (
-            <Card>
-              <CardContent className="p-4">
-                <h3 className="mb-3 text-sm font-medium">Mood Trend</h3>
-                <ResponsiveContainer width="100%" height={200}>
-                  <LineChart data={moodChart}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis dataKey="date" className="text-xs" />
-                    <YAxis domain={[1, 5]} className="text-xs" />
-                    <Tooltip />
-                    <Line type="monotone" dataKey="mood" stroke="#0000FF" strokeWidth={2} dot={{ r: 3 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          )}
-          {stats.monthlyCount.length > 0 && (
-            <Card>
-              <CardContent className="p-4">
-                <h3 className="mb-3 text-sm font-medium">Journals per Month</h3>
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart data={stats.monthlyCount}>
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                    <XAxis dataKey="month" className="text-xs" />
-                    <YAxis className="text-xs" allowDecimals={false} />
-                    <Tooltip />
-                    <Bar dataKey="count" fill="#0000FF" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          )}
-          {moodChart.length === 0 && stats.monthlyCount.length === 0 && (
-            <Card>
-              <CardContent className="py-12 text-center text-sm text-muted-foreground">No statistics available yet.</CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        <TabsContent value="achievements" className="mt-4">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Achievement icon={BookHeart} title="First Journal" desc="Published your first journal" unlocked={stats.totalJournals >= 1} color="text-brand-600" />
-            <Achievement icon={Flame} title="7 Day Streak" desc="Journaled 7 days in a row" unlocked={profile.longest_streak >= 7} color="text-gold-500" />
-            <Achievement icon={Flame} title="30 Day Streak" desc="Journaled 30 days in a row" unlocked={profile.longest_streak >= 30} color="text-gold-500" />
-            <Achievement icon={BookHeart} title="100 Entries" desc="Published 100 journals" unlocked={stats.totalJournals >= 100} color="text-brand-600" />
-            <Achievement icon={Users} title="First Friend" desc="Made your first friend" unlocked={friends.length >= 1} color="text-success" />
-            <Achievement icon={Users} title="Social Butterfly" desc="Connected with 10 friends" unlocked={friends.length >= 10} color="text-success" />
-            <Achievement icon={CheckCircle2} title="Task Master" desc="Completed 50 activities" unlocked={stats.totalActivities >= 50} color="text-purple-500" />
-            <Achievement icon={TrendingUp} title="Mindful" desc="Tracked mood 30 times" unlocked={moodData.length >= 30} color="text-blue-500" />
-            <Achievement icon={Droplets} title="Hydration Master" desc="Stay hydrated for 7 days" unlocked={false} color="text-cyan-500" />
-          </div>
-        </TabsContent>
-
-        <TabsContent value="friends" className="mt-4">
-          {friends.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
-                <Users className="h-10 w-10 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">No friends yet.</p>
-              </CardContent>
-            </Card>
+        <TabsContent value="activities" className="mt-4 space-y-3">
+          {activities.length === 0 ? (
+            <Card><CardContent className="py-12 text-center text-sm text-muted-foreground">No activities yet.</CardContent></Card>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {friends.map((f) => (
-                <Link key={f.id} href={`/profile/${f.friend?.username ?? ''}`}>
-                  <Card className="cursor-pointer transition-shadow hover:shadow-md">
-                    <CardContent className="flex items-center gap-3 p-4">
-                      <Avatar className="h-10 w-10">
-                        {f.friend?.avatar_url ? <img src={f.friend.avatar_url} alt="" className="h-full w-full object-cover" /> : null}
-                        <AvatarFallback className="bg-brand-100 text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
-                          {(f.friend?.username ?? '?').charAt(0).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate font-medium">{f.friend?.username ?? 'User'}</p>
-                        {f.friend?.bio && <p className="truncate text-xs text-muted-foreground">{f.friend.bio}</p>}
-                      </div>
-                      {f.friend?.streak > 0 && (
-                        <Badge variant="outline" className="gap-1 text-xs"><Flame className="h-3 w-3 text-gold-500" /> {f.friend.streak}d</Badge>
-                      )}
-                    </CardContent>
-                  </Card>
-                </Link>
-              ))}
-            </div>
+            activities.map((a) => (
+              <Card key={a.id}>
+                <CardContent className="flex items-center gap-3 p-4">
+                  <div className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: a.color }} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{a.title}</p>
+                    <p className="text-xs text-muted-foreground">{formatDate(a.start_time)} · {new Date(a.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                  </div>
+                  {a.is_completed && <Badge variant="secondary">Done</Badge>}
+                </CardContent>
+              </Card>
+            ))
           )}
+        </TabsContent>
+
+        <TabsContent value="about" className="mt-4">
+          <Card>
+            <CardContent className="space-y-4 p-6">
+              <div>
+                <h3 className="mb-1 text-sm font-semibold text-muted-foreground">Bio</h3>
+                <p className="text-sm">{profile.bio ?? 'No bio yet.'}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <h3 className="mb-1 font-semibold text-muted-foreground">Joined</h3>
+                  <p>{formatDate(profile.join_date)}</p>
+                </div>
+                <div>
+                  <h3 className="mb-1 font-semibold text-muted-foreground">Longest streak</h3>
+                  <p>{profile.longest_streak} days</p>
+                </div>
+              </div>
+              {stats && (
+                <div className="grid grid-cols-2 gap-4 border-t border-border pt-4 text-sm sm:grid-cols-4">
+                  <div className="flex items-center gap-2"><Timer className="h-4 w-4 text-muted-foreground" /> {Math.round(stats.totalStudyMinutes / 60)}h studied</div>
+                  <div className="flex items-center gap-2"><BookOpen className="h-4 w-4 text-muted-foreground" /> {stats.journalCount} journals</div>
+                  <div className="flex items-center gap-2"><Heart className="h-4 w-4 text-muted-foreground" /> {stats.likesReceived} likes</div>
+                  <div className="flex items-center gap-2"><MessageCircle className="h-4 w-4 text-muted-foreground" /> {stats.commentsReceived} comments</div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>
   );
 }
 
-function Stat({ icon: Icon, label, value, color }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string; color: string }) {
+function StatTile({ icon: Icon, label, value }: { icon: typeof BookOpen; label: string; value: number }) {
   return (
-    <div className="flex flex-col items-center gap-1 rounded-xl border border-border/60 bg-muted/30 p-3 text-center">
-      <Icon className={`h-5 w-5 ${color}`} />
-      <span className="font-display text-lg font-semibold">{value}</span>
-      <span className="text-xs text-muted-foreground">{label}</span>
+    <div className="rounded-xl border border-border bg-card p-4 text-center">
+      <Icon className="mx-auto mb-1.5 h-5 w-5 text-primary" />
+      <p className="text-xl font-semibold">{value}</p>
+      <p className="text-xs text-muted-foreground">{label}</p>
     </div>
-  );
-}
-
-function StatCard({ icon: Icon, label, value, color }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string; color: string }) {
-  return (
-    <Card>
-      <CardContent className="flex items-center gap-3 p-4">
-        <div className={`flex h-10 w-10 items-center justify-center rounded-full bg-muted ${color}`}>
-          <Icon className="h-5 w-5" />
-        </div>
-        <div>
-          <p className="font-display text-lg font-semibold">{value}</p>
-          <p className="text-xs text-muted-foreground">{label}</p>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function Achievement({ icon: Icon, title, desc, unlocked, color }: { icon: React.ComponentType<{ className?: string }>; title: string; desc: string; unlocked: boolean; color: string }) {
-  return (
-    <Card className={unlocked ? '' : 'opacity-50'}>
-      <CardContent className="flex items-center gap-3 p-4">
-        <div className={`flex h-12 w-12 items-center justify-center rounded-full ${unlocked ? 'bg-muted' : 'bg-muted/50'} ${unlocked ? color : 'text-muted-foreground'}`}>
-          <Icon className="h-6 w-6" />
-        </div>
-        <div>
-          <p className="text-sm font-medium">{title}</p>
-          <p className="text-xs text-muted-foreground">{desc}</p>
-          {unlocked && <Badge variant="secondary" className="mt-1 gap-1 text-xs"><Award className="h-3 w-3" /> Unlocked</Badge>}
-        </div>
-      </CardContent>
-    </Card>
   );
 }

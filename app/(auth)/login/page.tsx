@@ -1,54 +1,63 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
+import { useAuth } from '@/components/providers/auth-provider';
+import { GoogleButton } from '@/components/brand/google-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { GoogleButton } from '@/components/brand/google-button';
 import { toast } from 'sonner';
-import { Loader2, Mail, Lock, ArrowRight } from 'lucide-react';
+import { Loader2, Mail, Lock } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
+  const params = useSearchParams();
+  const { user } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
+  if (user) {
+    router.replace('/today');
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || !password) {
-      toast.error('Please enter your email and password');
-      return;
-    }
+    if (!email || !password) return;
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      toast.success('Welcome back!');
-      router.push('/today');
+      const next = params.get('next') ?? '/today';
+      router.replace(next);
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to sign in');
-    } finally {
+      toast.error(err instanceof Error ? err.message : 'Sign in failed');
       setLoading(false);
     }
   };
 
   return (
-    <Card className="border-border/60 shadow-soft-lg backdrop-blur">
-      <CardHeader className="space-y-1.5 pb-6">
-        <CardTitle className="font-display text-2xl">Welcome back</CardTitle>
-        <CardDescription className="text-muted-foreground">
-          Sign in to continue your journaling journey.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+    <div className="w-full max-w-sm animate-fade-in">
+      <div className="mb-8 text-center">
+        <h1 className="font-display text-2xl font-semibold tracking-tight">Welcome back</h1>
+        <p className="mt-1.5 text-sm text-muted-foreground">Sign in to continue your journey.</p>
+      </div>
+
+      <div className="rounded-2xl border border-border/60 bg-card/80 p-6 shadow-soft backdrop-blur">
+        <GoogleButton label="Continue with Google" redirectTo={params.get('next') ?? '/today'} />
+
+        <div className="my-5 flex items-center gap-3">
+          <div className="h-px flex-1 bg-border" />
+          <span className="text-xs font-medium text-muted-foreground">or</span>
+          <div className="h-px flex-1 bg-border" />
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <Label htmlFor="email">Email</Label>
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -64,7 +73,7 @@ export default function LoginPage() {
               />
             </div>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <Label htmlFor="password">Password</Label>
               <Link href="/forgot-password" className="text-xs font-medium text-primary hover:underline">
@@ -85,22 +94,19 @@ export default function LoginPage() {
               />
             </div>
           </div>
-          <Button type="submit" disabled={loading} className="w-full">
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Sign in <ArrowRight className="ml-1 h-4 w-4" /></>}
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Sign in
           </Button>
         </form>
-        <div className="relative my-5">
-          <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border" /></div>
-          <div className="relative flex justify-center text-xs uppercase"><span className="bg-card px-2 text-muted-foreground">or</span></div>
-        </div>
-        <GoogleButton label="Continue with Google" />
-        <p className="mt-6 text-center text-sm text-muted-foreground">
-          Don&apos;t have an account?{' '}
-          <Link href="/signup" className="font-medium text-primary hover:underline">
-            Create one
-          </Link>
-        </p>
-      </CardContent>
-    </Card>
+      </div>
+
+      <p className="mt-6 text-center text-sm text-muted-foreground">
+        Don&apos;t have an account?{' '}
+        <Link href="/signup" className="font-medium text-primary hover:underline">
+          Sign up
+        </Link>
+      </p>
+    </div>
   );
 }

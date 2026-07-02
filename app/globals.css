@@ -120,3 +120,70 @@
 .animate-scale-in {
   animation: scale-in 0.2s ease-out;
 }
+
+/* Journal reading typography */
+.prose-journal {
+  font-size: 1.0625rem;
+  line-height: 1.75;
+  color: hsl(var(--foreground));
+  max-width: 68ch;
+}
+.prose-journal p { margin-bottom: 0.75rem; }
+.prose-journal strong { font-weight: 600; }
+.prose-journal em { font-style: italic; }
+.prose-journal code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.9em;
+  background: hsl(var(--muted));
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+}
+.prose-journal ul, .prose-journal ol {
+  margin: 0.5rem 0 0.75rem 1.5rem;
+  list-style-position: outside;
+}
+.prose-journal ul { list-style: disc; }
+.prose-journal ol { list-style: decimal; }
+.prose-journal li { margin-bottom: 0.25rem; line-height: 1.7; }
+.prose-journal blockquote {
+  border-left: 3px solid hsl(var(--primary) / 0.4);
+  padding-left: 1rem;
+  margin: 0.75rem 0;
+  color: hsl(var(--muted-foreground));
+  font-style: italic;
+}
+.prose-journal br + br { display: block; margin-top: 0.5rem; }
+
+.reading-content {
+  font-size: 1.125rem;
+  line-height: 1.8;
+}
+.reading-content .prose-journal {
+  font-size: 1.125rem;
+  line-height: 1.8;
+}
+
+.line-clamp-4 {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Heatmap colors */
+.heat-0 { background: hsl(var(--muted) / 0.5); }
+.heat-1 { background: hsl(var(--primary) / 0.25); }
+.heat-2 { background: hsl(var(--primary) / 0.5); }
+.heat-3 { background: hsl(var(--primary) / 0.75); }
+.heat-4 { background: hsl(var(--primary)); }
+
+/* Typing indicator */
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+.typing-dot {
+  animation: typing-bounce 1.2s infinite ease-in-out;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.typing-dot:nth-child(3) { animation-delay: 0.3s; }

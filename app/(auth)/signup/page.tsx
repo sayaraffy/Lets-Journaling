@@ -4,32 +4,23 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
+import { GoogleButton } from '@/components/brand/google-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { GoogleButton } from '@/components/brand/google-button';
 import { toast } from 'sonner';
-import { Loader2, Mail, Lock, User, ArrowRight } from 'lucide-react';
+import { Loader2, Mail, Lock, User } from 'lucide-react';
 
 export default function SignupPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [username, setUsername] = useState('');
+  const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      toast.error('Please enter a valid email address');
-      return;
-    }
-    if (username.trim().length < 3) {
-      toast.error('Username must be at least 3 characters');
-      return;
-    }
+    if (!email || !password) return;
     if (password.length < 6) {
       toast.error('Password must be at least 6 characters');
       return;
@@ -39,53 +30,58 @@ export default function SignupPage() {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { username: username.trim() } },
+        options: { data: { full_name: fullName || undefined } },
       });
       if (error) throw error;
-      if (data.user) {
-        await supabase
-          .from('profiles')
-          .update({ username: username.trim() })
-          .eq('id', data.user.id);
+      if (data.user && !data.session) {
+        toast.success('Account created! Check your email to confirm.');
+        setLoading(false);
+        return;
       }
-      toast.success('Account created! Welcome to Let\'s Journaling.');
-      router.push('/today');
+      if (fullName) {
+        await supabase.from('profiles').update({ full_name: fullName }).eq('id', data.user!.id);
+      }
+      router.replace('/today');
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to create account');
-    } finally {
+      toast.error(err instanceof Error ? err.message : 'Sign up failed');
       setLoading(false);
     }
   };
 
   return (
-    <Card className="border-border/60 shadow-soft-lg backdrop-blur">
-      <CardHeader className="space-y-1.5 pb-6">
-        <CardTitle className="font-display text-2xl">Create your account</CardTitle>
-        <CardDescription className="text-muted-foreground">
-          Start capturing your days and growing every day.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+    <div className="w-full max-w-sm animate-fade-in">
+      <div className="mb-8 text-center">
+        <h1 className="font-display text-2xl font-semibold tracking-tight">Create your account</h1>
+        <p className="mt-1.5 text-sm text-muted-foreground">Start journaling in under a minute.</p>
+      </div>
+
+      <div className="rounded-2xl border border-border/60 bg-card/80 p-6 shadow-soft backdrop-blur">
+        <GoogleButton label="Sign up with Google" redirectTo="/today" />
+
+        <div className="my-5 flex items-center gap-3">
+          <div className="h-px flex-1 bg-border" />
+          <span className="text-xs font-medium text-muted-foreground">or</span>
+          <div className="h-px flex-1 bg-border" />
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="username">Username</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="name">Full name <span className="text-muted-foreground">(optional)</span></Label>
             <div className="relative">
               <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                id="username"
+                id="name"
                 type="text"
-                placeholder="yourname"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Jane Doe"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
                 className="pl-9"
-                required
-                minLength={3}
-                maxLength={20}
+                autoComplete="name"
               />
             </div>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <Label htmlFor="email">Email</Label>
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -101,7 +97,7 @@ export default function SignupPage() {
               />
             </div>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <Label htmlFor="password">Password</Label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -113,27 +109,23 @@ export default function SignupPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 className="pl-9"
                 required
-                minLength={6}
                 autoComplete="new-password"
               />
             </div>
           </div>
-          <Button type="submit" disabled={loading} className="w-full">
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Create account <ArrowRight className="ml-1 h-4 w-4" /></>}
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Create account
           </Button>
         </form>
-        <div className="relative my-5">
-          <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border" /></div>
-          <div className="relative flex justify-center text-xs uppercase"><span className="bg-card px-2 text-muted-foreground">or</span></div>
-        </div>
-        <GoogleButton label="Sign up with Google" />
-        <p className="mt-6 text-center text-sm text-muted-foreground">
-          Already have an account?{' '}
-          <Link href="/login" className="font-medium text-primary hover:underline">
-            Sign in
-          </Link>
-        </p>
-      </CardContent>
-    </Card>
+      </div>
+
+      <p className="mt-6 text-center text-sm text-muted-foreground">
+        Already have an account?{' '}
+        <Link href="/login" className="font-medium text-primary hover:underline">
+          Sign in
+        </Link>
+      </p>
+    </div>
   );
 }
