@@ -21,7 +21,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background">
         <LogoMark className="h-12 w-12 animate-pulse-soft" />
-        <p className="font-display text-sm font-medium text-muted-foreground">Puffin</p>
+        <p className="font-display text-sm font-medium text-muted-foreground">Lets Journaling</p>
       </div>
     );
   }

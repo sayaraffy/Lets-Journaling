@@ -86,7 +86,7 @@ const config: Config = {
           700: '#0066D6',
           800: '#0055B3',
           900: '#004490',
-          DEFAULT: '#0000FF',
+          DEFAULT: '#2563EB',
         },
         gold: {
           50: '#FFF8E0',
